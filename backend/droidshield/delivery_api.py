@@ -12,7 +12,7 @@ from droidshield import delivery_schemas as ds
 from droidshield import evidence_uploads
 from droidshield import schemas as s
 from droidshield import services as base
-from droidshield.api import Ctx, Idem, Limit, Offset, page
+from droidshield.api_common import Ctx, Idem, Limit, Offset, page
 from droidshield.methodology import library
 from droidshield.models import AssessmentEvidence, Retest
 

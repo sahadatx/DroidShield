@@ -11,7 +11,7 @@ from starlette.background import BackgroundTask
 from droidshield import report_schemas as s
 from droidshield import reports as svc
 from droidshield import services
-from droidshield.api import Ctx, Idem, Limit, Offset, page
+from droidshield.api_common import Ctx, Idem, Limit, Offset, page
 from droidshield.cvss_scoring import score_cvss
 from droidshield.errors import DomainError
 from droidshield.models import Report

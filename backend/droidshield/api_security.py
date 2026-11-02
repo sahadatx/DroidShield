@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
 from droidshield import services as svc
-from droidshield.api import Ctx, Idem, Limit, Offset
+from droidshield.api_common import Ctx, Idem, Limit, Offset
 from droidshield.api_secrets import SecretError, list_references, resolve
 from droidshield.api_transport import HTTPSProbe, RequestCancelled, TransportError
 from droidshield.auth import utc
