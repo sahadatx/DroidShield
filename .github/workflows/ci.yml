@@ -30,10 +30,51 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Install Bubblewrap
+      - name: Install Bubblewrap and restricted AppArmor profile
         run: |
           sudo apt-get update
-          sudo apt-get install --yes bubblewrap
+          sudo apt-get install --yes apparmor-profiles apparmor-utils bubblewrap
+
+          profile=/usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+          if [[ ! -r "$profile" ]]; then
+            profile=/etc/apparmor.d/bwrap-userns-restrict
+          fi
+          if [[ ! -r "$profile" ]]; then
+            echo "Ubuntu's restricted Bubblewrap AppArmor profile is unavailable" >&2
+            exit 1
+          fi
+          sudo apparmor_parser --replace "$profile"
+
+      - name: Verify Bubblewrap isolation is available
+        run: |
+          args=()
+          for runtime in /usr/lib /usr/lib64 /lib /lib64; do
+            if [[ -e "$runtime" ]]; then
+              args+=(--ro-bind "$runtime" "$runtime")
+            fi
+          done
+          args+=(--ro-bind /usr/bin/true /usr/bin/true)
+
+          bwrap "${args[@]}" \
+            --unshare-all \
+            --unshare-user \
+            --unshare-net \
+            --unshare-pid \
+            --disable-userns \
+            --assert-userns-disabled \
+            --die-with-parent \
+            --new-session \
+            --cap-drop ALL \
+            --proc /proc \
+            --dev /dev \
+            --size 33554432 \
+            --tmpfs /tmp \
+            --dir /input \
+            --dir /engine \
+            --remount-ro / \
+            --clearenv \
+            --chdir /tmp \
+            -- /usr/bin/true
 
       - name: Install project and development dependencies
         run: |
