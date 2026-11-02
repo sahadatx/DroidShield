@@ -71,13 +71,13 @@ The `code` and details vary by error. Field paths can be mapped to inline valida
 | `GET /health/live` | Process liveness | Public; no dependency or scanner execution |
 | `GET /health/ready` | Dependency readiness | Public; sanitized result, `503` on unavailable dependency |
 | `GET /api/v1/me` | Current actor | ID, workspace ID, email, full name, role and account status |
-| `GET /api/v1/capabilities` | Safe configured capabilities | Engine booleans, upload maximum, opaque lab labels and session timeout maximum; no secrets or host paths |
+| `GET /api/v1/capabilities` | Safe configured capabilities | Engine booleans, upload maximum, opaque lab labels and session timeout maximum; no secrets, service URLs, device serials or host paths |
 | `GET /api/v1/directory-metrics` | Page-sized Client/Project table summaries | Repeated `client_ids` and `project_ids` (up to 25 each); only accessible relationships are counted; returns active project/assessment totals, last activity, latest uploaded version and last assessment time |
-| `GET /api/v1/findings` | Global scoped findings | Paginated; `q`, `project_id`, `assessment_id`, `severity`, `verification_status` |
-| `GET /api/v1/findings/{id}` | Finding detail | Safe narratives, mappings, status and evidence provenance; analyst edits and independent review via the delivery routes below |
-| `GET /api/v1/assessments/{id}/dynamic-sessions` | Session history | Scoped, paginated |
+| `GET /api/v1/findings` | List accessible findings | Paginated; title/component search and exact project, assessment, severity, verification and remediation filters |
+| `GET /api/v1/findings/{id}` | Finding detail | Safe narratives, mappings, status and evidence provenance; requires current project/workspace access |
+| `GET /api/v1/assessments/{id}/dynamic-sessions` | Session history | Scoped pagination with exact status and scenario filters |
 | `POST /api/v1/assessments/{id}/dynamic-sessions` | Create bounded offline session | Writer, current assessment revision, verified scope, configured lab and idempotency key |
-| `GET /api/v1/dynamic-sessions/{id}` | Session/result detail | Sanitized result, lifecycle and opaque device ID |
+| `GET /api/v1/dynamic-sessions/{id}` | Session/result detail | Sanitized typed observations, lifecycle and opaque device ID |
 | `POST /api/v1/dynamic-sessions/{id}/cancel` | Cancel session | Writer, required reason and idempotency key; no assessment revision field |
 | `GET /api/v1/clients` | List accessible Clients | Paginated; `q`, `status` |
 | `POST /api/v1/clients` | Create Client | Analyst/admin, idempotency key |
@@ -108,13 +108,6 @@ The `code` and details vary by error. Field paths can be mapped to inline valida
 | `GET /api/v1/assessments/{id}/job` | Read job lifecycle | Safe status, timestamps and sanitized failure/cancellation fields |
 | `GET /api/v1/assessments/{id}/analysis` | Read normalized static result | Scoped immutable metadata, indicators, engine version and limitations |
 | `GET /api/v1/assessments/{id}/findings` | Read finding summaries | Scoped paginated results; scanner candidates start Unreviewed/Open |
-| `GET /api/v1/findings` | List accessible finding candidates | Paginated, title/component search and exact project/assessment/severity/verification/remediation filters |
-| `GET /api/v1/findings/{id}` | Read finding and sanitized provenance | Current project/workspace access |
-| `GET /api/v1/capabilities` | Safe engine/lab configuration flags | Authenticated; no secrets, service URLs or device serials |
-| `GET /api/v1/assessments/{id}/dynamic-sessions` | List runtime sessions | Scoped pagination with exact status and scenario filters |
-| `POST /api/v1/assessments/{id}/dynamic-sessions` | Queue a bounded offline lab session | Writer, idempotency, revision, verified scope and configured device |
-| `GET /api/v1/dynamic-sessions/{id}` | Read runtime status/results | Scoped typed sanitized observations |
-| `POST /api/v1/dynamic-sessions/{id}/cancel` | Request runtime cancellation | Writer, idempotency and reason |
 | `GET /api/v1/overview` | Derived workspace/project counts and status summaries | Scoped counts for accessible client/project records |
 | `GET /api/v1/audit-events` | Workspace audit history and matching result counts | ADMIN-only; actor/resource/date/action/result filters; no edit/delete API |
 | `GET /api/v1/projects/{id}/api-secret-refs` | Safe account reference choices | Project-visible; returns only bound reference names and kinds |
@@ -125,6 +118,33 @@ The `code` and details vary by error. Field paths can be mapped to inline valida
 | `GET /api/v1/assessments/{id}/api-executions` | API execution history | Scoped standard Page with optional exact lifecycle-status filter |
 | `GET /api/v1/api-executions/{id}` | API lifecycle/result detail | Typed sanitized observations and fixed limitations |
 | `POST /api/v1/api-executions/{id}/cancel` | Cancel API work | Writer, reason and idempotency; no assessment revision field |
+| `POST /api/v1/assessments/{id}/artifact` | Upload and bind a mobile artifact | APK/AAB/IPA intake; protected storage and server-derived identity; automated static analysis is APK-only |
+| `GET /api/v1/assessments/{id}/coverage` | Read assessment coverage | Scoped procedures and explicit Not Run gaps |
+| `PUT /api/v1/assessments/{id}/coverage/{case_id}` | Record a test result | Revision-checked status, evidence/finding links and analyst provenance |
+| `GET /api/v1/assessments/{id}/evidence` | List assessment evidence | Scoped, paginated sanitized records |
+| `POST /api/v1/assessments/{id}/evidence` | Create text evidence | Analyst-submitted sanitized evidence with assessment/build provenance |
+| `POST /api/v1/assessments/{id}/evidence-attachments` | Upload screenshot evidence | Bounded PNG attachment in protected storage, linked to analyst evidence |
+| `GET /api/v1/evidence/{id}` | Read evidence metadata | Scoped provenance and integrity metadata; no storage path |
+| `GET /api/v1/evidence/{id}/content` | Download protected evidence | Authorized attachment download with integrity verification |
+| `POST /api/v1/assessments/{id}/findings` | Create a finding | Analyst-created finding with scoped evidence and verification lifecycle |
+| `PATCH /api/v1/findings/{id}` | Update a finding | Revision-checked analyst edits; verification state uses separate review |
+| `POST /api/v1/findings/{id}/review` | Review a finding | Independent ADMIN verification decision |
+| `POST /api/v1/assessments/{id}/manual-start` | Begin a manual engagement | Current authorization, exact scope and assessment revision required |
+| `POST /api/v1/assessments/{id}/manual-finish` | Submit engagement for review | Records analyst summary; does not execute external tools |
+| `POST /api/v1/assessments/{id}/review` | Review a completed assessment | Independent ADMIN review |
+| `GET /api/v1/methodology` | Read the methodology library | Versioned local procedures and pinned standards references |
+| `POST /api/v1/cvss/score` | Calculate a CVSS score | Authenticated base-vector calculation; does not create a finding |
+| `GET /api/v1/retests` | List retests | Scoped, paginated history and supported filters |
+| `GET /api/v1/retests/{id}` | Read retest detail | Scoped result, evidence provenance and review state |
+| `POST /api/v1/findings/{id}/retests` | Create a retest | Distinct authorized build/API release and new evidence required |
+| `POST /api/v1/retests/{id}/review` | Review a retest | Independent ADMIN decision; approved Pass may mark the finding Fixed |
+| `POST /api/v1/assessments/{id}/reports` | Create a report snapshot | Freeze a completed, independently reviewed assessment |
+| `GET /api/v1/reports` | List reports | Scoped, paginated report versions and supported filters |
+| `GET /api/v1/reports/{id}` | Read report snapshot | Immutable scope, coverage, findings and release metadata |
+| `POST /api/v1/reports/{id}/release` | Approve a report | Independent ADMIN approval of the exact snapshot |
+| `GET /api/v1/reports/{id}/exports` | List report exports | Protected export metadata and digests |
+| `POST /api/v1/reports/{id}/exports` | Export a report | Generate approved PDF or JSON into protected storage |
+| `GET /api/v1/report-exports/{id}/download` | Download a report export | Authorized attachment download with integrity verification |
 
 There is no hard-delete endpoint. Archive preserves resource identity and historical relationships. Static engines, controlled Dynamic execution, exact-target API execution and connected frontend pages are delivered. Full manual engagement records and email/password browser sessions are implemented; automatic Full execution and full team administration remain outside the execution surface. Database readiness expects Alembic revision `0009_evidence_attachment_scope`; it does not probe sandbox availability, scanner/lab health or a running worker. The application serves its frontend at `/` and only the two named script/style files under `/assets`; it does not expose a directory or protected storage mount.
 
