@@ -1,5 +1,14 @@
 # Verification records
 
+Each version section is a dated snapshot of the specific checks and environment
+recorded there. Its test counts and integration results do not automatically
+apply to later commits or deployments. The current checked-in Alembic head is
+`0009_evidence_attachment_scope`; the Version 0.5 note that the default local
+workspace had reached `0006_reports` describes that workspace at the time of
+that historical run. It does not identify the current source head or any
+deployment database revision. Use `droidshield migrate` to advance a development
+workspace, and verify deployment databases independently.
+
 ## Version 0.5 — Android/iOS analyst delivery
 
 Verified on 2026-10-28 using fictional fixtures, an unprivileged Linux account,
@@ -35,8 +44,9 @@ schemas. No client app or external production target was assessed.
   leave the ASGI event loop responsive.
 - SQLite and PostgreSQL migration history/round trips and Alembic consistency
   checks passed; populated legacy project/assessment/device lease records are
-  preserved. The default local workspace was migrated through `0006_reports`
-  without seeding users, clients or demo counters.
+  preserved. The default local workspace used for this dated QA record was at
+  `0006_reports`; it was not seeded with users, clients or demo counters. This
+  local-workspace note is distinct from the isolated migration checks above.
 - Ruff lint/format checks and the 0.5 wheel build passed. A separately installed
   wheel smoke exercised packaged frontend/migrations/fonts and the bounded PDF
   helper. A five-page fictional sample PDF was rendered and visually inspected.

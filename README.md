@@ -48,7 +48,7 @@ Each worker accepts `--once` to process at most one eligible job. Queue records 
 - Controlled ADB sessions on dedicated disposable Android emulators: package inspection/launch, fixed Frida native-call counters and exact-target HTTPS proxy observations. Exclusive device leases, authorization monitoring, bounded execution, owned-resource cleanup and crash quarantine remain mandatory. Frida keeps deny-all guest egress; proxy sessions add only an exact app-UID loopback path to the guarded proxy. See [lab requirements](docs/dynamic-lab.md), [Frida](docs/frida.md) and [proxy controls](docs/proxy.md).
 - An API Security page and separate leased API worker: immutable exact GET/HEAD endpoint configurations, project-bound protected account references, explicit test windows/rates, verified/pinned HTTPS transport, outbound network controls and sanitized response comparisons. HTTP success is an observation; candidate findings remain Unreviewed/Open. See [API testing](docs/api-security.md).
 - Database-derived overview counts, source assessment/artifact/hash/engine provenance, job leases/heartbeats/fencing, cancellation/revocation monitoring and immutable normalized results.
-- Sanitized text evidence and bounded PNG screenshot attachments in separate protected storage, with immutable metadata, integrity-checked authenticated downloads and report snapshot references.
+- Sanitized text evidence and bounded PNG screenshot attachments in separate protected storage, with immutable metadata and integrity-checked authenticated downloads. PDF/JSON snapshots include screenshot metadata and hashes; image pixels remain separate protected downloads and are not embedded in reports.
 
 The automated engines provide bounded checks. Automated exploit/fuzzing/injection coverage, arbitrary Frida scripts, TLS/certificate-pinning bypass, broad runtime instrumentation, dependency/CVE completeness, signature validation, production identity-provider integration, editable settings and full team administration remain outside their execution surface. Manual coverage records document external analyst work and never imply tool execution. Client reports support audit evidence; they do not certify SOC 2, ISO 27001, HIPAA, PCI DSS or store approval. A clean candidate list is not proof that an application is secure. The binary-manifest parser supports version codes 0–2,147,483,647 with absent/zero `versionCodeMajor`; other major values fail closed.
 
@@ -123,7 +123,7 @@ APKs are untrusted. Local manifest/DEX processing runs in a network-disabled Lin
 
 ## Verification
 
-The [verification record](docs/verification.md) retains version 0.3 results and separates later checks. The Frida, proxy and API runbooks document their current test coverage and actual integration results separately from simulated fault tests.
+The [verification record](docs/verification.md) contains dated test snapshots for versions 0.3–0.5; each result describes that recorded setup and is not a claim that every later commit or deployment was re-tested. The checked-in migration head is `0009_evidence_attachment_scope`. The version 0.5 record's note about the default local workspace being at `0006_reports` is historical and refers only to that workspace at the time; migrate a development database with `droidshield migrate`, and do not infer a deployment database's revision from the note. Frida, proxy and API runbooks document their test coverage and actual integration results separately from simulated fault tests.
 
 ```sh
 pytest
