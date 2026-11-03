@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { ApiError, analysisCoverageSections, apiEvidenceSections, artifactFormat, assessmentWorkflowLabel, coverageMatrixMarkup, comparisonArtifactMarkup, createApi, dynamicScenarioOptions, dynamicDeviceLabel, endpointsFromForm, escapeHTML, exactHTTPSURL, formatBytes, kpiCards, makeQuery, metricCount, overviewFilterPanel, pager, parseRoute, reportSnapshotMarkup, runtimeEvidenceSections, splitTargets, valuesFromFields, viewAction, workspaceUserRow } from "../backend/droidshield/web/app.js";
+import { ApiError, analysisCoverageSections, apiEvidenceSections, artifactFormat, assessmentWorkflowLabel, coverageMatrixMarkup, comparisonArtifactMarkup, createApi, dynamicScenarioOptions, dynamicDeviceLabel, endpointsFromForm, escapeHTML, exactHTTPSURL, formatBytes, kpiCards, makeQuery, metricCount, overviewFilterPanel, pager, parseRoute, reportSnapshotMarkup, runtimeEvidenceSections, splitTargets, valuesFromFields, viewAction, workspaceSettingsMarkup, workspaceSettingsPayload, workspaceSecretStatusMarkup, workspaceUserRow } from "../backend/droidshield/web/app.js";
 
 test("untrusted markup is encoded in text and attribute contexts", () => {
   assert.equal(escapeHTML('<img src=x onerror="alert(1)"> & \'x\''), "&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; &#39;x&#39;");
@@ -39,6 +39,45 @@ test("Team and Access checks the role before loading the supported user director
   assert.match(source,/Set a password through the trusted local CLI/i);
   const form=source.slice(source.indexOf("function userForm"),source.indexOf("function revokeUserSessionsForm"));
   assert.doesNotMatch(form,/textField\("password"|name:\s*"password"/);
+});
+
+test("workspace settings form sends only validated presentation fields and the current revision",()=>{
+  const data=new FormData();
+  data.set("workspace_name","  <script>Client workspace</script>  ");
+  data.set("display_timezone"," America/New_York ");
+  data.set("date_format","mdy");
+  data.set("default_report_template","technical");
+  data.set("report_branding_name","  ");
+  data.set("secret_references","forged");data.set("api_key","should-not-serialize");
+  const payload=workspaceSettingsPayload(data,7);
+  assert.deepEqual(payload,{revision:7,workspace_name:"<script>Client workspace</script>",display_timezone:"America/New_York",date_format:"mdy",default_report_template:"technical",report_branding_name:null});
+  assert.deepEqual(Object.keys(payload).sort(),["date_format","default_report_template","display_timezone","report_branding_name","revision","workspace_name"]);
+  assert.throws(()=>workspaceSettingsPayload(data,0),/Reload workspace settings/);
+  data.set("workspace_name","  ");assert.throws(()=>workspaceSettingsPayload(data,7),/workspace name/);
+  data.set("workspace_name","Workspace");data.set("date_format","custom");assert.throws(()=>workspaceSettingsPayload(data,7),/date format/);
+});
+
+test("workspace settings markup escapes values and exposes integration status without secret values",()=>{
+  const settings={workspace_name:'<img src=x onerror="bad">',display_timezone:"UTC",date_format:"iso",default_report_template:"combined",report_branding_name:"<script>brand</script>",updated_at:null};
+  const summary=workspaceSettingsMarkup(settings);
+  assert.match(summary,/&lt;img src=x onerror=&quot;bad&quot;&gt;/);
+  assert.match(summary,/&lt;script&gt;brand&lt;\/script&gt;/);
+  assert.doesNotMatch(summary,/<img|<script/);
+  const status=workspaceSecretStatusMarkup({mobsf_service:{configured:true,api_key:"top-secret"},api_secret_store:{configured:false,token:"top-secret"},frida_runtime:{configured:true},proxy_certificate_authority:{configured:false},private_key:"top-secret"});
+  assert.match(status,/MobSF analysis service/);assert.match(status,/Configuration present/);assert.match(status,/No configuration detected/);assert.match(status,/does not verify runtime readiness/);
+  assert.doesNotMatch(status,/top-secret|api_key|private_key|token/);
+});
+
+test("workspace settings are fetched and edited only in the administrator interface",async()=>{
+  const source=await readFile(new URL("../backend/droidshield/web/app.js",import.meta.url),"utf8");
+  const page=source.slice(source.indexOf("async function settingsPage"),source.indexOf("const multiField"));
+  assert.match(page,/if\(admin\(\)\)\{\s*const settings=await api\("\/settings",\{signal\}\)/);
+  assert.match(page,/workspaceSecretStatusMarkup\(settings\.secret_references\)/);
+  const form=source.slice(source.indexOf("function workspaceSettingsForm"),source.indexOf("async function settingsPage"));
+  assert.match(form,/kind:"workspace-settings"[\s\S]*?path:"\/settings",method:"PATCH",revision:settings\.revision/);
+  assert.match(form,/workspaceSettingsPayload\(data,settings\.revision\)/);
+  assert.doesNotMatch(form,/secret_references|api_key|proxy_certificate_authority/);
+  assert.match(source,/spec\.kind==="workspace-settings"\)\{currentWorkspaceSettings=record;workspaceSettingsForm\(record\);\}/);
 });
 
 test("record table actions render an accessible eye icon and View label", () => {
@@ -249,7 +288,7 @@ test("distributed browser assets do not persist tokens or load executable third-
   assert.match(js,/name="email"/);assert.match(js,/name="password"/);assert.match(js,/\/auth\/session/);
   assert.doesNotMatch(js,/name="token"|Workspace access token|Authorization:\s*`Bearer/);
   assert.match(js,/credentials:"same-origin"/);
-  assert.match(html,/<script type="module" src="\/assets\/app\.js\?v=0\.5\.17"><\/script>/);
+  assert.match(html,/<script type="module" src="\/assets\/app\.js\?v=0\.5\.18"><\/script>/);
   assert.match(js,/<caption class="visually-hidden">\$\{e\(columns\[0\]\)\} records<\/caption>/);
   assert.doesNotMatch(js,/Portfolio preview · synthetic records\./);
   assert.match(css,/dialog\.record-drawer\s*\{/);

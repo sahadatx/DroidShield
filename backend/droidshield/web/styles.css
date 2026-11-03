@@ -426,6 +426,17 @@ dialog::backdrop { background: rgb(8 24 39 / 65%); backdrop-filter: blur(4px); }
   .nav a, .button, .kpi, .top-search { transition: none; }
 }
 
+.settings-integration-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.settings-integration { min-width: 0; padding: 14px; border: 1px solid #293741; border-radius: 8px; background: linear-gradient(145deg, #141f28, #111a22); }
+.settings-integration>div { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.settings-integration strong { color: #d5dfe4; font-size: 10px; line-height: 1.5; }
+.settings-integration p { margin: 10px 0 0; color: #82919e; font-size: 9px; line-height: 1.6; }
+.settings-status { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 8px; color: #e7b277; background: #392c1e; font-size: 8px; font-weight: 650; white-space: nowrap; }
+.settings-status>span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.settings-status.is-configured { color: #6fddbd; background: #15352f; }
+.settings-status.is-unconfigured { color: #aab8c1; background: #25313a; }
+@media (max-width: 680px) { .settings-integration-grid { grid-template-columns: minmax(0, 1fr); } }
+
 .user-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .user-actions .button { min-width: 0; }
 .user-actions .button svg { width: 13px; height: 13px; }
