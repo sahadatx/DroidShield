@@ -57,7 +57,7 @@ The `code` and details vary by error. Field paths can be mapped to inline valida
 | `404` | Record is missing or outside the actor's authorized visibility |
 | `408` | APK transfer deadline exceeded |
 | `409` | Stale revision, idempotency mismatch or invalid workflow state |
-| `413` | APK file or HTTP body size budget exceeded |
+| `413` | APK file/HTTP body size budget or audit export size limit exceeded |
 | `415` | Unsupported upload request/file media type |
 | `422` | Invalid body/query, malformed or unsupported APK, package mismatch or resource validation failure |
 | `429` | Concurrent upload capacity is busy or the sign-in source has exceeded its shared rate limit |
@@ -118,6 +118,7 @@ The `code` and details vary by error. Field paths can be mapped to inline valida
 | `GET /api/v1/assessments/{id}/findings` | Read finding summaries | Scoped paginated results; scanner candidates start Unreviewed/Open |
 | `GET /api/v1/overview` | Derived workspace/project counts and status summaries | Scoped counts for accessible client/project records |
 | `GET /api/v1/audit-events` | Workspace audit history and matching result counts | ADMIN-only; actor/resource/date/action/result filters; no edit/delete API |
+| `GET /api/v1/audit-events/export` | Download filtered workspace audit history | ADMIN-only CSV/JSON; same filters as audit history, maximum 10,000 events / 10 MiB; successful export is audited |
 | `GET /api/v1/projects/{id}/api-secret-refs` | Safe account reference choices | Project-visible; returns only bound reference names and kinds |
 | `GET /api/v1/assessments/{id}/api-targets` | API target configuration | Scoped standard Page; optional exact authentication-method filter; one immutable target per API assessment |
 | `POST /api/v1/assessments/{id}/api-targets` | Configure exact API endpoints | Writer, idempotency, draft API assessment and project-bound references |
@@ -385,7 +386,7 @@ state-changing probes and broad API coverage remain planned. See
 
 `GET /assessments` also accepts inclusive UTC `date_from` and `date_to` filters. It combines them with project, type, status and name search filters so the Overview’s recent-assessment table follows the selected dashboard scope.
 
-`GET /audit-events` is ADMIN-only and accepts pagination plus exact `action` (up to 128 characters), `resource_type` (up to 64), `result` (`success`/`failure`), `actor_id`, `resource_id`, and inclusive UTC `date_from`/`date_to` filters. A reversed date range returns 422. The response includes matching success/failure summary counts. Each item exposes `id`, UTC `timestamp`, `actor_id`, action, resource type/ID, result, request ID and sanitized `source`. It provides no update/delete operation. Current successful resource mutations generate audit events without request bodies, notes, evidence, headers or credentials. SQLite/PostgreSQL migrations reject UPDATE/DELETE on audit events, artifact metadata and normalized analysis results; PostgreSQL also rejects audit/result TRUNCATE. The browser provides actor, resource ID/type, action, result and date filters. Audit export remains planned.
+`GET /audit-events` is ADMIN-only and accepts pagination plus exact `action` (up to 128 characters), `resource_type` (up to 64), `result` (`success`/`failure`), `actor_id`, `resource_id`, and inclusive UTC `date_from`/`date_to` filters. A reversed date range returns 422. The response includes matching success/failure summary counts. Each item exposes `id`, UTC `timestamp`, `actor_id`, action, resource type/ID, result, request ID and sanitized `source`. `GET /audit-events/export?format=csv|json` exports all records matching the same filters, in the current workspace only. It is ADMIN-only, records an `audit.exported` event without filter values, and caps a download at 10,000 records and 10 MiB; narrow the filters if either bound is exceeded. Exported source metadata is reduced to approved non-secret fields. CSV cells are protected against spreadsheet formula injection. These read/export routes provide no update/delete operation. Current successful resource mutations generate audit events without request bodies, notes, evidence, headers or credentials. SQLite/PostgreSQL migrations reject UPDATE/DELETE on audit events, artifact metadata and normalized analysis results; PostgreSQL also rejects audit/result TRUNCATE. The browser provides actor, resource ID/type, action, result and date filters.
 
 ## 9. Planned operations — not implemented by this contract
 
@@ -402,7 +403,7 @@ The following are implementation requirements, not callable API promises. Final 
 | API Security / 09 | Extend delivered exact GET/HEAD targets, reference-based account comparisons and outbound/rate/window controls with safely imported specifications, interactive OAuth and explicitly authorized broader test cases |
 | Retests / 10 | Extend delivered build/API-release provenance, evidence comparison, reviewed outcomes and guarded Fixed transition with reminders and scheduling |
 | Methodology | Extend the delivered version-pinned library, coverage matrix and evidence/finding links with managed custom test-library updates |
-| Team, audit and settings / 11 | Self-service password setup/invitations and audit export; broader settings management, secret-reference writes and integration health details remain planned. The delivered ADMIN-only settings API edits workspace name, display timezone, date format, report template and report branding; sensitive runtime configuration stays server-owned and reads expose status booleans only. |
+| Team, audit and settings / 11 | Self-service password setup/invitations, broader settings management, secret-reference writes and integration health details remain planned. ADMIN-only CSV/JSON audit export and safe browser editing of workspace name, display timezone, date format, report template and report branding are delivered; sensitive runtime configuration stays server-owned and reads expose status booleans only. |
 
 Frontend pages must not send guessed requests to these planned operations. Reviewed report generation and analyst review are implemented as specified below. Broad network/API attacks and automatic Full execution remain outside the execution surface. Application installation/launch is confined to the separately configured disposable-emulator workflow; it is never performed by APK intake, the API process or static engines.
 

@@ -25,7 +25,14 @@ def test_generated_openapi_matches_reviewed_contract_snapshot():
 def test_implemented_endpoint_index_matches_generated_operations():
     contract = (REPOSITORY / "docs" / "api-contract.md").read_text(encoding="utf-8")
     endpoint_section = contract.split("## 2. Implemented endpoints", 1)[1].split("\n## ", 1)[0]
-    documented_rows = [match.groups() for match in ENDPOINT_ROW.finditer(endpoint_section)]
+    # Only the endpoint index table is authoritative here. Later prose may use
+    # shorthand paths such as ``GET /settings`` when describing an indexed route.
+    documented_rows = [
+        match.groups()
+        for line in endpoint_section.splitlines()
+        if line.startswith("| `")
+        for match in ENDPOINT_ROW.finditer(line)
+    ]
     documented = {(method, PATH_PARAMETER.sub("{}", path)) for method, path in documented_rows}
     actual = {
         (method.upper(), PATH_PARAMETER.sub("{}", path))

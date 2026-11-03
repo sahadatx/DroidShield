@@ -1,5 +1,7 @@
 """API integration checks with isolated databases and real bearer credentials."""
 
+import csv
+import io
 import os
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -736,6 +738,162 @@ def test_audit_filters_include_actor_resource_and_inclusive_utc_dates(api):
         api.get("/audit-events", params={"date_from": "2026-10-31", "date_to": "2026-10-30"}),
         422,
     )
+
+
+def test_audit_export_is_workspace_scoped_filtered_admin_only_and_sanitized(api):
+    main_resource = uuid4()
+    with Session(api.engine) as session:
+        session.add_all(
+            [
+                AuditEvent(
+                    workspace_id=api.workspaces["main"],
+                    actor_id=api.users["admin"],
+                    action="client.created",
+                    resource_type="client",
+                    resource_id=main_resource,
+                    result="success",
+                    request_id="export-main-event",
+                    source_metadata={
+                        "channel": "api",
+                        "changed_fields": ["workspace_name", "evil\n=SUM(1)"],
+                        "method": {"secret": "must-not-export"},
+                        "private_token": "must-not-export",
+                    },
+                ),
+                AuditEvent(
+                    workspace_id=api.workspaces["other"],
+                    actor_id=api.users["other_admin"],
+                    action="other.secret",
+                    resource_type="credential",
+                    resource_id=uuid4(),
+                    result="success",
+                    request_id="foreign-workspace-event",
+                    source_metadata={"channel": "api", "private_token": "foreign-secret"},
+                ),
+            ]
+        )
+        session.commit()
+
+    expect(api.get("/audit-events/export", role="analyst", params={"format": "json"}), 403)
+    response = api.get(
+        "/audit-events/export",
+        params={"format": "json", "action": "client.created", "resource_id": str(main_resource)},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    assert 'filename="droidshield-audit-export.json"' in response.headers["content-disposition"]
+    assert response.headers["cache-control"] == "no-store"
+    exported = response.json()
+    assert exported["total"] == 1
+    assert exported["items"][0]["resource_id"] == str(main_resource)
+    assert exported["items"][0]["source"] == {
+        "channel": "api",
+        "changed_fields": "workspace_name",
+    }
+    assert "must-not-export" not in response.text
+    assert "foreign-workspace-event" not in response.text
+
+    foreign = api.get("/audit-events/export", role="other_admin", params={"format": "json"})
+    assert foreign.status_code == 200
+    assert foreign.json()["total"] == 1
+    assert foreign.json()["items"][0]["request_id"] == "foreign-workspace-event"
+    assert "client.created" not in foreign.text
+
+    export_audit = expect(api.get("/audit-events", params={"action": "audit.exported"}))
+    assert export_audit["total"] == 1
+    assert export_audit["items"][0]["source"] == {
+        "channel": "api",
+        "format": "json",
+        "record_count": "1",
+        "filters": "action, resource_id",
+    }
+    assert str(main_resource) not in str(export_audit["items"][0]["source"])
+
+
+def test_audit_csv_export_neutralizes_spreadsheet_formulas_and_rejects_bad_filters(api):
+    with Session(api.engine) as session:
+        session.add(
+            AuditEvent(
+                workspace_id=api.workspaces["main"],
+                actor_id=api.users["admin"],
+                action="=1+1",
+                resource_type="api",
+                resource_id=None,
+                result="success",
+                request_id="csv-formula-event",
+                source_metadata={"channel": "api"},
+            )
+        )
+        session.commit()
+
+    response = api.get("/audit-events/export", params={"format": "csv", "action": "=1+1"})
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert 'filename="droidshield-audit-export.csv"' in response.headers["content-disposition"]
+    rows = list(csv.reader(io.StringIO(response.text)))
+    assert rows[0] == [
+        "id",
+        "timestamp",
+        "actor_id",
+        "action",
+        "resource_type",
+        "resource_id",
+        "result",
+        "request_id",
+        "source",
+    ]
+    assert rows[1][3] == "'=1+1"
+    expect(api.get("/audit-events/export", params={"format": "xml"}), 422)
+    expect(
+        api.get(
+            "/audit-events/export",
+            params={"format": "csv", "date_from": "2026-10-31", "date_to": "2026-10-30"},
+        ),
+        422,
+    )
+
+
+def test_audit_export_enforces_record_limit_without_logging_failed_export(api, monkeypatch):
+    import droidshield.assessment_api as assessment_api
+
+    monkeypatch.setattr(assessment_api, "MAX_AUDIT_EXPORT_RECORDS", 1)
+    with Session(api.engine) as session:
+        session.add_all(
+            [
+                AuditEvent(
+                    workspace_id=api.workspaces["main"],
+                    actor_id=api.users["admin"],
+                    action="test.one",
+                    resource_type="test",
+                    resource_id=None,
+                    result="success",
+                    request_id="export-limit-one",
+                    source_metadata={},
+                ),
+                AuditEvent(
+                    workspace_id=api.workspaces["main"],
+                    actor_id=api.users["admin"],
+                    action="test.two",
+                    resource_type="test",
+                    resource_id=None,
+                    result="success",
+                    request_id="export-limit-two",
+                    source_metadata={},
+                ),
+            ]
+        )
+        session.commit()
+    expect(api.get("/audit-events/export", params={"format": "json"}), 413)
+    assert expect(api.get("/audit-events", params={"action": "audit.exported"}))["total"] == 0
+
+
+def test_audit_export_enforces_encoded_size_limit_without_logging_failed_export(api, monkeypatch):
+    import droidshield.assessment_api as assessment_api
+
+    monkeypatch.setattr(assessment_api, "MAX_AUDIT_EXPORT_BYTES", 1)
+    response = api.get("/audit-events/export", params={"format": "json"})
+    assert response.status_code == 413
+    assert expect(api.get("/audit-events", params={"action": "audit.exported"}))["total"] == 0
 
 
 def test_workspace_isolation_includes_direct_ids_and_membership_grants(api):

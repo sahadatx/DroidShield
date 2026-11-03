@@ -1,10 +1,14 @@
 """Assessment, authorization, finding, and workspace reporting routes."""
 
+import csv
+import io
+import json
+import re
 from datetime import UTC, date, datetime, time
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, Response
 from sqlalchemy import func, or_, select
 
 from droidshield import schemas as s
@@ -30,6 +34,145 @@ from droidshield.models import (
 )
 
 router = APIRouter()
+MAX_AUDIT_EXPORT_RECORDS = 10_000
+MAX_AUDIT_EXPORT_BYTES = 10 * 1024 * 1024
+AUDIT_EXPORT_SOURCE_KEYS = {
+    "channel",
+    "method",
+    "route",
+    "role",
+    "status",
+    "revoked_sessions",
+    "revision",
+    "changed_fields",
+    "format",
+    "record_count",
+    "filters",
+}
+
+
+def _audit_event_query(
+    ctx,
+    *,
+    action,
+    resource_type,
+    result,
+    actor_id,
+    resource_id,
+    date_from,
+    date_to,
+):
+    svc.require_admin(ctx)
+    if date_from and date_to and date_from > date_to:
+        raise DomainError(422, "validation_error", "Start date must be on or before end date")
+    query = select(AuditEvent).where(AuditEvent.workspace_id == ctx.workspace_id)
+    if action:
+        query = query.where(AuditEvent.action == action)
+    if resource_type:
+        query = query.where(AuditEvent.resource_type == resource_type)
+    if result:
+        query = query.where(AuditEvent.result == result)
+    if actor_id:
+        query = query.where(AuditEvent.actor_id == actor_id)
+    if resource_id:
+        query = query.where(AuditEvent.resource_id == resource_id)
+    if date_from:
+        query = query.where(AuditEvent.created_at >= datetime.combine(date_from, time.min, UTC))
+    if date_to:
+        query = query.where(AuditEvent.created_at <= datetime.combine(date_to, time.max, UTC))
+    return query
+
+
+def _audit_export_source(source):
+    """Export only bounded, non-secret audit context with a strict field allowlist."""
+    if not isinstance(source, dict):
+        return {}
+    output = {}
+    for key in sorted(AUDIT_EXPORT_SOURCE_KEYS):
+        if key not in source:
+            continue
+        value = source[key]
+        if (
+            key == "channel"
+            and isinstance(value, str)
+            and value
+            in {
+                "api",
+                "worker",
+                "trusted_local_cli",
+            }
+        ):
+            output[key] = value
+        elif (
+            key == "method"
+            and isinstance(value, str)
+            and value
+            in {
+                "GET",
+                "POST",
+                "PATCH",
+                "password",
+                "password_session",
+            }
+        ):
+            output[key] = value
+        elif key == "route" and isinstance(value, str):
+            safe_route = re.sub(r"[^a-zA-Z0-9_/{}/.:-]", "", value)[:256]
+            if safe_route:
+                output[key] = safe_route
+        elif (
+            key == "role"
+            and isinstance(value, str)
+            and value
+            in {
+                "ADMIN",
+                "SECURITY_ANALYST",
+                "VIEWER",
+            }
+        ):
+            output[key] = value
+        elif key == "status" and isinstance(value, str) and value in {"active", "disabled"}:
+            output[key] = value
+        elif key in {"revision", "revoked_sessions", "record_count"}:
+            if (type(value) is int and value >= 0) or (
+                isinstance(value, str) and value.isdecimal()
+            ):
+                output[key] = str(value)
+        elif key in {"changed_fields", "filters"} and isinstance(value, (list, str)):
+            items = value.split(",") if isinstance(value, str) else value
+            safe_values = sorted(
+                {
+                    item.strip()
+                    for item in items
+                    if isinstance(item, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,63}", item.strip())
+                }
+            )
+            if safe_values:
+                output[key] = ", ".join(safe_values[:32])
+        elif key == "format" and isinstance(value, str) and value in {"csv", "json"}:
+            output[key] = value
+    return output
+
+
+def _audit_export_record(item):
+    return {
+        "id": str(item.id),
+        "timestamp": utc(item.created_at).isoformat().replace("+00:00", "Z"),
+        "actor_id": str(item.actor_id) if item.actor_id else None,
+        "action": item.action,
+        "resource_type": item.resource_type,
+        "resource_id": str(item.resource_id) if item.resource_id else None,
+        "result": item.result,
+        "request_id": item.request_id,
+        "source": _audit_export_source(item.source_metadata),
+    }
+
+
+def _csv_safe_cell(value):
+    text = "" if value is None else str(value)
+    if text.lstrip(" \t\r\n").startswith(("=", "+", "-", "@")):
+        return "'" + text
+    return text
 
 
 @router.get("/capabilities", tags=["Workspace"])
@@ -600,24 +743,16 @@ def audit_events(
     date_from: date | None = None,
     date_to: date | None = None,
 ):
-    svc.require_admin(ctx)
-    if date_from and date_to and date_from > date_to:
-        raise DomainError(422, "validation_error", "Start date must be on or before end date")
-    query = select(AuditEvent).where(AuditEvent.workspace_id == ctx.workspace_id)
-    if action:
-        query = query.where(AuditEvent.action == action)
-    if resource_type:
-        query = query.where(AuditEvent.resource_type == resource_type)
-    if result:
-        query = query.where(AuditEvent.result == result)
-    if actor_id:
-        query = query.where(AuditEvent.actor_id == actor_id)
-    if resource_id:
-        query = query.where(AuditEvent.resource_id == resource_id)
-    if date_from:
-        query = query.where(AuditEvent.created_at >= datetime.combine(date_from, time.min, UTC))
-    if date_to:
-        query = query.where(AuditEvent.created_at <= datetime.combine(date_to, time.max, UTC))
+    query = _audit_event_query(
+        ctx,
+        action=action,
+        resource_type=resource_type,
+        result=result,
+        actor_id=actor_id,
+        resource_id=resource_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
     summary = dict(
         ctx.session.execute(
             query.with_only_columns(AuditEvent.result, func.count())
@@ -648,3 +783,132 @@ def audit_events(
         "offset": offset,
         "summary": {"success": summary.get("success", 0), "failure": summary.get("failure", 0)},
     }
+
+
+@router.get(
+    "/audit-events/export",
+    tags=["Audit"],
+    responses={
+        200: {"content": {"application/json": {}, "text/csv": {}}},
+        413: {"description": "The filtered export exceeds the record or byte limit."},
+    },
+)
+def export_audit_events(
+    ctx: Ctx,
+    export_format: Annotated[Literal["csv", "json"], Query(alias="format")],
+    action: Annotated[str | None, Query(max_length=128)] = None,
+    resource_type: Annotated[str | None, Query(max_length=64)] = None,
+    result: Literal["success", "failure"] | None = None,
+    actor_id: UUID | None = None,
+    resource_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+):
+    query = _audit_event_query(
+        ctx,
+        action=action,
+        resource_type=resource_type,
+        result=result,
+        actor_id=actor_id,
+        resource_id=resource_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    events = ctx.session.scalars(
+        query.order_by(AuditEvent.created_at.desc(), AuditEvent.id).limit(
+            MAX_AUDIT_EXPORT_RECORDS + 1
+        )
+    ).all()
+    if len(events) > MAX_AUDIT_EXPORT_RECORDS:
+        raise DomainError(
+            413,
+            "export_too_large",
+            f"Narrow the filters to export at most {MAX_AUDIT_EXPORT_RECORDS:,} audit events.",
+        )
+    records = [_audit_export_record(event) for event in events]
+    if export_format == "json":
+        content = json.dumps(
+            {
+                "exported_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                "total": len(records),
+                "items": records,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        media_type = "application/json"
+    else:
+        output = io.StringIO(newline="")
+        writer = csv.writer(output, lineterminator="\r\n")
+        columns = (
+            "id",
+            "timestamp",
+            "actor_id",
+            "action",
+            "resource_type",
+            "resource_id",
+            "result",
+            "request_id",
+            "source",
+        )
+        writer.writerow(columns)
+        for record in records:
+            row = [
+                json.dumps(
+                    record["source"], ensure_ascii=False, sort_keys=True, separators=(",", ":")
+                )
+                if column == "source"
+                else record[column]
+                for column in columns
+            ]
+            writer.writerow([_csv_safe_cell(value) for value in row])
+        content = output.getvalue().encode("utf-8")
+        media_type = "text/csv"
+    if len(content) > MAX_AUDIT_EXPORT_BYTES:
+        raise DomainError(
+            413,
+            "export_too_large",
+            f"Narrow the filters to keep the export under {MAX_AUDIT_EXPORT_BYTES // (1024 * 1024)} MiB.",
+        )
+
+    active_filters = sorted(
+        name
+        for name, value in (
+            ("action", action),
+            ("resource_type", resource_type),
+            ("result", result),
+            ("actor_id", actor_id),
+            ("resource_id", resource_id),
+            ("date_from", date_from),
+            ("date_to", date_to),
+        )
+        if value is not None
+    )
+    ctx.session.add(
+        AuditEvent(
+            workspace_id=ctx.workspace_id,
+            actor_id=ctx.user.id,
+            action="audit.exported",
+            resource_type="audit_events",
+            resource_id=None,
+            result="success",
+            request_id=ctx.request_id,
+            source_metadata={
+                "channel": "api",
+                "format": export_format,
+                "record_count": str(len(records)),
+                "filters": ", ".join(active_filters),
+            },
+        )
+    )
+    ctx.session.commit()
+    extension = "json" if export_format == "json" else "csv"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="droidshield-audit-export.{extension}"',
+            "Cache-Control": "no-store",
+        },
+    )
