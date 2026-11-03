@@ -5843,6 +5843,191 @@
         ],
         "type": "object"
       },
+      "WorkspaceSecretReferencesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "api_secret_store": {
+            "$ref": "#/components/schemas/WorkspaceSecretStatusOut"
+          },
+          "frida_runtime": {
+            "$ref": "#/components/schemas/WorkspaceSecretStatusOut"
+          },
+          "mobsf_service": {
+            "$ref": "#/components/schemas/WorkspaceSecretStatusOut"
+          },
+          "proxy_certificate_authority": {
+            "$ref": "#/components/schemas/WorkspaceSecretStatusOut"
+          }
+        },
+        "required": [
+          "mobsf_service",
+          "api_secret_store",
+          "frida_runtime",
+          "proxy_certificate_authority"
+        ],
+        "type": "object"
+      },
+      "WorkspaceSecretStatusOut": {
+        "additionalProperties": false,
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured"
+        ],
+        "type": "object"
+      },
+      "WorkspaceSettingsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "date_format": {
+            "enum": [
+              "iso",
+              "dmy",
+              "mdy"
+            ],
+            "type": "string"
+          },
+          "default_report_template": {
+            "enum": [
+              "executive",
+              "technical",
+              "combined"
+            ],
+            "type": "string"
+          },
+          "display_timezone": {
+            "type": "string"
+          },
+          "report_branding_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "secret_references": {
+            "$ref": "#/components/schemas/WorkspaceSecretReferencesOut"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "workspace_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "workspace_name",
+          "display_timezone",
+          "date_format",
+          "default_report_template",
+          "report_branding_name",
+          "revision",
+          "updated_at",
+          "secret_references"
+        ],
+        "type": "object"
+      },
+      "WorkspaceSettingsUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "date_format": {
+            "anyOf": [
+              {
+                "enum": [
+                  "iso",
+                  "dmy",
+                  "mdy"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "default_report_template": {
+            "anyOf": [
+              {
+                "enum": [
+                  "executive",
+                  "technical",
+                  "combined"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "display_timezone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "report_branding_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "minimum": 1.0,
+            "type": "integer"
+          },
+          "workspace_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "type": "object"
+      },
       "WorkspaceUserCreate": {
         "additionalProperties": false,
         "properties": {
@@ -11096,6 +11281,65 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RetestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "operationId": "read_settings_api_v1_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSettingsOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "edit_settings_api_v1_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSettingsOut"
                 }
               }
             }

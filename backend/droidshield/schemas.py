@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Generic, Literal, TypeVar
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
     AfterValidator,
@@ -553,6 +554,66 @@ class WorkspaceUserOut(ResponseModel):
     status: UserStatus
     created_at: datetime
     updated_at: datetime
+
+
+class WorkspaceSecretStatusOut(ResponseModel):
+    configured: bool
+
+
+class WorkspaceSecretReferencesOut(ResponseModel):
+    mobsf_service: WorkspaceSecretStatusOut
+    api_secret_store: WorkspaceSecretStatusOut
+    frida_runtime: WorkspaceSecretStatusOut
+    proxy_certificate_authority: WorkspaceSecretStatusOut
+
+
+class WorkspaceSettingsOut(ResponseModel):
+    workspace_id: UUID
+    workspace_name: str
+    display_timezone: str
+    date_format: Literal["iso", "dmy", "mdy"]
+    default_report_template: Literal["executive", "technical", "combined"]
+    report_branding_name: str | None
+    revision: int
+    updated_at: datetime | None
+    secret_references: WorkspaceSecretReferencesOut
+
+
+class WorkspaceSettingsUpdate(RequestModel):
+    revision: Revision
+    workspace_name: Annotated[str, StringConstraints(min_length=1, max_length=255)] | None = None
+    display_timezone: Annotated[str, StringConstraints(min_length=1, max_length=64)] | None = None
+    date_format: Literal["iso", "dmy", "mdy"] | None = None
+    default_report_template: Literal["executive", "technical", "combined"] | None = None
+    report_branding_name: Annotated[str, StringConstraints(min_length=1, max_length=255)] | None = (
+        None
+    )
+
+    @field_validator("display_timezone")
+    @classmethod
+    def valid_timezone(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        try:
+            ZoneInfo(value)
+        except (ValueError, ZoneInfoNotFoundError) as exc:
+            raise ValueError("Use a recognized IANA time zone") from exc
+        return value
+
+    @model_validator(mode="after")
+    def require_editable_change(self):
+        editable = self.model_fields_set - {"revision"}
+        if not editable:
+            raise ValueError("Provide at least one settings change")
+        for field in (
+            "workspace_name",
+            "display_timezone",
+            "date_format",
+            "default_report_template",
+        ):
+            if field in editable and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
 
 
 class PasswordLogin(RequestModel):

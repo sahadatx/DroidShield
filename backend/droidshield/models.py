@@ -113,6 +113,37 @@ class User(IdentityMixin, WorkspaceMixin, CreatedMixin, UpdatedMixin, Base):
     )
 
 
+class WorkspaceSettings(IdentityMixin, WorkspaceMixin, UpdatedMixin, RevisionMixin, Base):
+    """Allowlisted workspace display and report defaults, not runtime secrets."""
+
+    __tablename__ = "workspace_settings"
+
+    updated_by: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    display_timezone: Mapped[str] = mapped_column(String(64), default="UTC")
+    date_format: Mapped[str] = mapped_column(String(16), default="iso")
+    default_report_template: Mapped[str] = mapped_column(String(16), default="combined")
+    report_branding_name: Mapped[str | None] = mapped_column(String(255))
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", name="workspace_unique"),
+        user_reference("updated_by"),
+        CheckConstraint(
+            "length(trim(display_timezone)) > 0 AND length(display_timezone) <= 64",
+            name="timezone_required",
+        ),
+        CheckConstraint("date_format IN ('iso', 'dmy', 'mdy')", name="date_format"),
+        CheckConstraint(
+            "default_report_template IN ('executive', 'technical', 'combined')",
+            name="report_template",
+        ),
+        CheckConstraint(
+            "report_branding_name IS NULL OR length(trim(report_branding_name)) > 0",
+            name="branding_name",
+        ),
+        CheckConstraint("revision >= 1", name="revision_positive"),
+    )
+
+
 class AccessToken(IdentityMixin, CreatedMixin, Base):
     __tablename__ = "access_tokens"
 

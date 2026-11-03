@@ -30,6 +30,7 @@ from droidshield.models import (
     ProjectAccess,
     User,
     Workspace,
+    WorkspaceSettings,
 )
 
 PREFIX = "/api/v1"
@@ -138,6 +139,111 @@ def isolated_test_engine(database_url):
 def expect(response, status=200):
     assert response.status_code == status, response.text
     return response.json()
+
+
+def test_workspace_settings_are_admin_only_safe_and_workspace_scoped(api):
+    runtime = api.client.app.state.settings
+    runtime.mobsf_url = "https://mobsf.internal.example"
+    runtime.mobsf_api_key = "mobsf-secret-canary"
+    runtime.api_secret_store = "/private/secret-store.json"
+    runtime.frida_token = "frida-secret-canary"
+    runtime.proxy_ca_cert = "/private/proxy-ca.pem"
+    runtime.proxy_ca_key = "proxy-secret-canary"
+
+    defaults = expect(api.get("/settings"))
+    assert defaults["workspace_name"] == "main workspace"
+    assert defaults["display_timezone"] == "UTC"
+    assert defaults["date_format"] == "iso"
+    assert defaults["default_report_template"] == "combined"
+    assert defaults["revision"] == 1
+    assert defaults["secret_references"] == {
+        "mobsf_service": {"configured": True},
+        "api_secret_store": {"configured": True},
+        "frida_runtime": {"configured": True},
+        "proxy_certificate_authority": {"configured": True},
+    }
+    for secret in (
+        "mobsf-secret-canary",
+        "frida-secret-canary",
+        "proxy-secret-canary",
+        "mobsf.internal.example",
+        "/private/secret-store.json",
+        "/private/proxy-ca.pem",
+    ):
+        assert secret not in api.get("/settings").text
+
+    assert expect(api.get("/settings", role="other_admin"))["workspace_name"] == ("other workspace")
+    for role in ("analyst", "viewer"):
+        assert api.get("/settings", role=role).status_code == 403
+        assert (
+            api.patch("/settings", {"revision": 1, "date_format": "dmy"}, role).status_code == 403
+        )
+
+    with Session(api.engine) as session:
+        assert session.scalar(select(func.count()).select_from(WorkspaceSettings)) == 0
+
+
+def test_workspace_settings_update_revision_validation_and_audit_redaction(api):
+    updated = expect(
+        api.patch(
+            "/settings",
+            {
+                "revision": 1,
+                "workspace_name": "DroidShield Security",
+                "display_timezone": "Europe/London",
+                "date_format": "dmy",
+                "default_report_template": "technical",
+                "report_branding_name": "DroidShield Labs",
+            },
+        )
+    )
+    assert updated["workspace_name"] == "DroidShield Security"
+    assert updated["display_timezone"] == "Europe/London"
+    assert updated["date_format"] == "dmy"
+    assert updated["default_report_template"] == "technical"
+    assert updated["report_branding_name"] == "DroidShield Labs"
+    assert updated["revision"] == 2
+    assert updated["updated_at"] is not None
+    assert expect(api.get("/settings")) == updated
+
+    stale = api.patch("/settings", {"revision": 1, "date_format": "mdy"})
+    assert stale.status_code == 409
+    assert api.patch("/settings", {"revision": 2}).status_code == 422
+    assert api.patch("/settings", {"revision": 2, "unknown": "value"}).status_code == 422
+    assert (
+        api.patch("/settings", {"revision": 2, "mobsf_api_key": "never-accepted"}).status_code
+        == 422
+    )
+    assert (
+        api.patch("/settings", {"revision": 2, "display_timezone": "Mars/Olympus"}).status_code
+        == 422
+    )
+    assert api.patch("/settings", {"revision": 2, "date_format": None}).status_code == 422
+
+    cleared = expect(api.patch("/settings", {"revision": 2, "report_branding_name": None}))
+    assert cleared["report_branding_name"] is None
+    assert cleared["revision"] == 3
+    with Session(api.engine) as session:
+        events = session.scalars(
+            select(AuditEvent).where(AuditEvent.action == "workspace.settings_updated")
+        ).all()
+        events.sort(key=lambda event: event.source_metadata["revision"])
+        assert len(events) == 2
+        assert events[0].resource_type == "workspace_settings"
+        assert events[0].resource_id == api.workspaces["main"]
+        assert events[0].source_metadata == {
+            "channel": "api",
+            "changed_fields": [
+                "date_format",
+                "default_report_template",
+                "display_timezone",
+                "report_branding_name",
+                "workspace_name",
+            ],
+            "revision": 2,
+        }
+        assert "DroidShield Security" not in str(events[0].source_metadata)
+        assert "DroidShield Labs" not in str(events[0].source_metadata)
 
 
 def make_client(api, name="Authorized Client", role="admin", **changes):

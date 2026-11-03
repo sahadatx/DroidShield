@@ -58,6 +58,7 @@ from droidshield.service_context import (
     visible_projects,
 )
 from droidshield.service_transactions import once
+from droidshield.settings_services import get_workspace_settings, update_workspace_settings
 
 __all__ = [
     "AnalysisJob",
@@ -86,6 +87,7 @@ __all__ = [
     "create_client",
     "create_project",
     "grant_project",
+    "get_workspace_settings",
     "is_excluded",
     "not_found",
     "once",
@@ -100,6 +102,7 @@ __all__ = [
     "update_assessment",
     "update_client",
     "update_project",
+    "update_workspace_settings",
     "update_workspace_user",
     "user_query",
     "utc",

@@ -3,7 +3,7 @@
 Each version section is a dated snapshot of the specific checks and environment
 recorded there. Its test counts and integration results do not automatically
 apply to later commits or deployments. The current checked-in Alembic head is
-`0009_evidence_attachment_scope`; the Version 0.5 note that the default local
+`0011_workspace_settings`; the Version 0.5 note that the default local
 workspace had reached `0006_reports` describes that workspace at the time of
 that historical run. It does not identify the current source head or any
 deployment database revision. Use `droidshield migrate` to advance a development
