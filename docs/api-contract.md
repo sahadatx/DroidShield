@@ -8,7 +8,7 @@ Resource prefix: `/api/v1`. Health endpoints are outside that prefix. The genera
 
 ### Identity and access
 
-The browser signs in with `POST /api/v1/auth/login` using an email and password. Passwords are stored as salted scrypt hashes. Successful sign-in sets a 12-hour (configurable) `HttpOnly`, `SameSite=Strict` session cookie and returns a short-lived CSRF value; the opaque session identifier is never returned to JavaScript. `GET /api/v1/auth/session` validates that cookie and refreshes the CSRF value after reload. Cookie-authenticated writes require a matching `X-CSRF-Token` header and CSRF cookie; `POST /api/v1/auth/logout` revokes that session and clears both cookies. Production cookies are Secure. Unknown email and incorrect password use the same response, and sign-in attempts are rate-limited per process.
+The browser signs in with `POST /api/v1/auth/login` using an email and password. Passwords are stored as salted scrypt hashes. Successful sign-in sets a 12-hour (configurable) `HttpOnly`, `SameSite=Strict` session cookie and returns a short-lived CSRF value; the opaque session identifier is never returned to JavaScript. `GET /api/v1/auth/session` validates that cookie and refreshes the CSRF value after reload. Cookie-authenticated writes require a matching `X-CSRF-Token` header and CSRF cookie; `POST /api/v1/auth/logout` revokes that session and clears both cookies. Production cookies are Secure. Unknown email and incorrect password use the same response. Sign-in attempts are limited to 10 per 60-second rolling window per source address, shared through the database across API workers. Source-address keys are stored as hashes and stale attempt records are removed as login requests arrive; if the shared limiter is unavailable, sign-in fails closed with `503`.
 
 Programmatic API clients may still send `Authorization: Bearer <opaque API token>`. Issue these explicitly through the trusted CLI; only token hashes are persisted, and they are not used by the browser. Expired or revoked credentials and disabled users fail authentication. Raw API tokens are returned only at issuance and must be handled as secrets. Set or reset a user's browser password with `droidshield set-password --user-id <UUID>`; the hidden terminal prompts never accept a password as a command-line argument and the operation revokes the user's existing sessions and API tokens.
 
@@ -58,8 +58,8 @@ The `code` and details vary by error. Field paths can be mapped to inline valida
 | `413` | APK file or HTTP body size budget exceeded |
 | `415` | Unsupported upload request/file media type |
 | `422` | Invalid body/query, malformed or unsupported APK, package mismatch or resource validation failure |
-| `429` | Per-process concurrent upload capacity is busy |
-| `503` | Readiness dependency, protected storage or required APK isolation is unavailable |
+| `429` | Concurrent upload capacity is busy or the sign-in source has exceeded its shared rate limit |
+| `503` | Database/readiness dependency, shared sign-in limiter, protected storage or required APK isolation is unavailable |
 
 ## 2. Implemented endpoints
 
@@ -146,7 +146,7 @@ The `code` and details vary by error. Field paths can be mapped to inline valida
 | `POST /api/v1/reports/{id}/exports` | Export a report | Generate approved PDF or JSON into protected storage |
 | `GET /api/v1/report-exports/{id}/download` | Download a report export | Authorized attachment download with integrity verification |
 
-There is no hard-delete endpoint. Archive preserves resource identity and historical relationships. Static engines, controlled Dynamic execution, exact-target API execution and connected frontend pages are delivered. Full manual engagement records and email/password browser sessions are implemented; automatic Full execution and full team administration remain outside the execution surface. Database readiness expects Alembic revision `0009_evidence_attachment_scope`; it does not probe sandbox availability, scanner/lab health or a running worker. The application serves its frontend at `/` and only the two named script/style files under `/assets`; it does not expose a directory or protected storage mount.
+There is no hard-delete endpoint. Archive preserves resource identity and historical relationships. Static engines, controlled Dynamic execution, exact-target API execution and connected frontend pages are delivered. Full manual engagement records and email/password browser sessions are implemented; automatic Full execution and full team administration remain outside the execution surface. Database readiness expects Alembic revision `0010_shared_login_rate_limits`; it does not probe sandbox availability, scanner/lab health or a running worker. The application serves its frontend at `/` and only the two named script/style files under `/assets`; it does not expose a directory or protected storage mount.
 
 ## 3. Client request and response fields
 

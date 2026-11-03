@@ -26,6 +26,7 @@ from droidshield.models import (
     Base,
     Client,
     Finding,
+    LoginRateLimitEntry,
     ProjectAccess,
     User,
     Workspace,
@@ -277,6 +278,38 @@ def test_email_password_session_survives_reload_and_logout_revokes_cookie(api):
     )
     assert wrong_password.status_code == 401
     assert wrong_password.json()["error"]["message"] == "Email or password is incorrect"
+
+
+def test_login_attempt_limit_is_shared_across_api_instances(api):
+    from droidshield.main import create_app
+
+    settings = Settings(
+        _env_file=None,
+        environment="test",
+        database_url="sqlite://",
+        allowed_hosts=["testserver"],
+    )
+    with TestClient(create_app(settings, api.engine)) as second_worker:
+        clients = (api.client, second_worker)
+        for index in range(10):
+            response = clients[index % 2].post(
+                PREFIX + "/auth/login",
+                json={"email": "admin@example.com", "password": "incorrect password"},
+            )
+            assert response.status_code == 401
+
+        limited = api.client.post(
+            PREFIX + "/auth/login",
+            json={"email": "admin@example.com", "password": "incorrect password"},
+        )
+        assert limited.status_code == 429
+        assert limited.json()["error"]["code"] == "login_rate_limited"
+
+    with Session(api.engine) as session:
+        entries = session.scalars(select(LoginRateLimitEntry)).all()
+        assert len(entries) == 1
+        assert len(entries[0].attempt_times_us) == 10
+        assert "testclient" not in entries[0].key_hash
 
 
 def test_viewer_and_analyst_roles_are_enforced_by_the_server(api):

@@ -675,6 +675,18 @@ class AuditEvent(IdentityMixin, WorkspaceMixin, CreatedMixin, Base):
     )
 
 
+class LoginRateLimitEntry(Base):
+    """Short-lived, shared sign-in attempt window keyed by a hashed source address."""
+
+    __tablename__ = "login_rate_limit_entries"
+
+    key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    attempt_times_us: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=list)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (Index("ix_login_rate_limit_entries_updated", "updated_at"),)
+
+
 class IdempotencyRecord(IdentityMixin, WorkspaceMixin, CreatedMixin, Base):
     __tablename__ = "idempotency_records"
 

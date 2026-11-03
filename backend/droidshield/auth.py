@@ -2,16 +2,19 @@ import base64
 import hashlib
 import secrets
 import threading
-from collections import OrderedDict, deque
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from time import monotonic
+from time import time_ns
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from droidshield.errors import DomainError
-from droidshield.models import AccessToken, User
+from droidshield.models import AccessToken, LoginRateLimitEntry, User
 
 SESSION_COOKIE = "ds_session"
 CSRF_COOKIE = "ds_csrf"
@@ -19,6 +22,7 @@ _SCRYPT_N = 1 << 14
 _SCRYPT_R = 8
 _SCRYPT_P = 1
 _PASSWORD_BYTES_MAX = 1024
+_SQLITE_LOGIN_RATE_LIMIT_LOCK = threading.Lock()
 
 
 def utc(value: datetime) -> datetime:
@@ -88,28 +92,98 @@ def verify_password(password: str, encoded_hash: str | None) -> bool:
 
 
 class LoginRateLimiter:
-    """Small bounded per-process guard for repeated password guesses."""
+    """Database-backed sliding window shared by every API worker."""
 
-    def __init__(self, limit: int = 10, window_seconds: int = 60, max_keys: int = 2048):
+    def __init__(
+        self,
+        session_factory: Callable[[], Session],
+        limit: int = 10,
+        window_seconds: int = 60,
+    ):
+        if limit < 1 or window_seconds < 1:
+            raise ValueError("Login rate limit and window must be positive")
+        self.session_factory = session_factory
         self.limit = limit
         self.window_seconds = window_seconds
-        self.max_keys = max_keys
-        self._attempts: OrderedDict[str, deque[float]] = OrderedDict()
-        self._lock = threading.Lock()
 
     def allow(self, key: str) -> bool:
-        now = monotonic()
-        with self._lock:
-            attempts = self._attempts.setdefault(key[:128] or "unknown", deque())
-            self._attempts.move_to_end(key[:128] or "unknown")
-            while attempts and now - attempts[0] >= self.window_seconds:
-                attempts.popleft()
-            if len(attempts) >= self.limit:
-                return False
-            attempts.append(now)
-            while len(self._attempts) > self.max_keys:
-                self._attempts.popitem(last=False)
-            return True
+        normalized = key.strip()[:128] or "unknown"
+        key_hash = hashlib.sha256(
+            b"droidshield-login-rate-limit-v1\0" + normalized.encode("utf-8", "replace")
+        ).hexdigest()
+        window_us = self.window_seconds * 1_000_000
+        cutoff = datetime.now(UTC) - timedelta(seconds=self.window_seconds)
+
+        try:
+            with self.session_factory() as session:
+                dialect = session.get_bind().dialect.name
+                if dialect == "sqlite":
+                    # SQLite has no row-level FOR UPDATE; serialize its dev-only
+                    # login transactions within this process before reading state.
+                    with _SQLITE_LOGIN_RATE_LIMIT_LOCK:
+                        return self._allow_in_session(session, dialect, key_hash, cutoff, window_us)
+                return self._allow_in_session(session, dialect, key_hash, cutoff, window_us)
+        except SQLAlchemyError as exc:
+            # Login must fail closed if the shared limiter cannot be consulted.
+            raise DomainError(
+                503,
+                "login_rate_limiter_unavailable",
+                "Sign-in is temporarily unavailable",
+            ) from exc
+
+    def _allow_in_session(self, session, dialect, key_hash, cutoff, window_us):
+        if dialect not in {"postgresql", "sqlite"}:
+            raise DomainError(
+                503,
+                "login_rate_limiter_unavailable",
+                "Sign-in is temporarily unavailable",
+            )
+        with session.begin():
+            # Expired keys are removed continuously, keeping only recent login sources.
+            session.execute(
+                delete(LoginRateLimitEntry).where(LoginRateLimitEntry.updated_at < cutoff)
+            )
+            values = {
+                "key_hash": key_hash,
+                "attempt_times_us": [],
+                "updated_at": datetime.now(UTC),
+            }
+            statement = (
+                pg_insert(LoginRateLimitEntry).values(**values)
+                if dialect == "postgresql"
+                else sqlite_insert(LoginRateLimitEntry).values(**values)
+            )
+            session.execute(
+                statement.on_conflict_do_nothing(index_elements=[LoginRateLimitEntry.key_hash])
+            )
+            entry = session.scalar(
+                select(LoginRateLimitEntry)
+                .where(LoginRateLimitEntry.key_hash == key_hash)
+                .with_for_update()
+            )
+            if entry is None:
+                raise DomainError(
+                    503,
+                    "login_rate_limiter_unavailable",
+                    "Sign-in is temporarily unavailable",
+                )
+            # Sample the clock only after taking the shared row lock. If a
+            # request records its timestamp while waiting for that lock, it
+            # can later appear older than an attempt that was committed first;
+            # the sliding-window filter would then discard that newer attempt.
+            now_us = time_ns() // 1_000
+            now = datetime.fromtimestamp(now_us / 1_000_000, UTC)
+            attempts = [
+                int(attempt)
+                for attempt in entry.attempt_times_us
+                if 0 <= now_us - int(attempt) < window_us
+            ]
+            allowed = len(attempts) < self.limit
+            if allowed:
+                attempts.append(now_us)
+            entry.attempt_times_us = attempts
+            entry.updated_at = now
+            return allowed
 
 
 def issue_token(session: Session, user_id: UUID, ttl_hours: int) -> str:

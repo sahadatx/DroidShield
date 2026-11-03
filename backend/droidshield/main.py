@@ -28,7 +28,7 @@ from droidshield.errors import DomainError
 from droidshield.models import AuditEvent
 from droidshield.report_api import router as report_router
 
-SCHEMA_REVISION = "0009_evidence_attachment_scope"
+SCHEMA_REVISION = "0010_shared_login_rate_limits"
 logger = logging.getLogger("droidshield")
 
 
@@ -55,7 +55,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     app.state.engine = database
     app.state.session_factory = session_factory(database)
     app.state.upload_limiter = anyio.Semaphore(config.max_concurrent_uploads)
-    app.state.login_limiter = LoginRateLimiter()
+    app.state.login_limiter = LoginRateLimiter(app.state.session_factory)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.allowed_hosts)
     app.add_middleware(
         CORSMiddleware,
