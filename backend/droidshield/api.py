@@ -22,6 +22,7 @@ __all__ = [
     "router",
 ]
 
+from droidshield.access_api import router as access_router
 from droidshield.api_common import (
     DB,
     Ctx,
@@ -42,6 +43,7 @@ from droidshield.identity_api import router as identity_router
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(identity_router)
+router.include_router(access_router)
 router.include_router(directory_router)
 router.include_router(assessment_router)
 router.include_router(evidence_router)

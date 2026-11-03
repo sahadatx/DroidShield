@@ -1195,3 +1195,117 @@ def test_form_validation_does_not_echo_sensitive_extra_fields(api):
     expect(
         api.client.post(PREFIX + "/clients", json={"name": "Client"}, headers=api.headers()), 422
     )
+
+
+def test_workspace_user_lifecycle_is_admin_scoped_and_requires_password_setup(api):
+    payload = {
+        "full_name": "New Analyst",
+        "email": "New.Analyst@Example.com",
+        "role": "SECURITY_ANALYST",
+    }
+    created = expect(api.post("/users", payload, key="create-new-analyst"), 201)
+    assert created["email"] == "new.analyst@example.com"
+    assert created["status"] == "disabled"
+    assert "password_hash" not in created
+    assert "password" not in created
+
+    replay = expect(api.post("/users", payload, key="create-new-analyst"), 201)
+    assert replay["id"] == created["id"]
+    expect(
+        api.post(
+            "/users",
+            {**payload, "full_name": "Changed payload"},
+            key="create-new-analyst",
+        ),
+        409,
+    )
+
+    users = expect(api.get("/users", params={"role": "SECURITY_ANALYST", "status": "disabled"}))
+    assert users["total"] == 1
+    assert users["items"][0]["id"] == created["id"]
+    expect(api.get("/users", role="analyst"), 403)
+    expect(
+        api.patch(f"/users/{created['id']}", {"status": "active"}),
+        409,
+    )
+
+    with Session(api.engine) as session:
+        record = session.get(User, UUID(created["id"]))
+        record.password_hash = hash_password("correct-horse-battery-staple")
+        session.commit()
+    activated = expect(api.patch(f"/users/{created['id']}", {"status": "active"}))
+    assert activated["status"] == "active"
+
+    expect(api.patch(f"/users/{api.users['other_admin']}", {"role": "VIEWER"}), 404)
+    expect(api.get("/users", role="viewer"), 403)
+
+
+def test_workspace_user_admin_invariants_and_session_revocation(api):
+    user_id = uuid4()
+    with Session(api.engine) as session:
+        record = User(
+            id=user_id,
+            workspace_id=api.workspaces["main"],
+            email="temporary@example.com",
+            full_name="Temporary Analyst",
+            password_hash=hash_password("correct-horse-battery-staple"),
+            role="SECURITY_ANALYST",
+            status="active",
+        )
+        session.add(record)
+        session.flush()
+        credential = issue_token(session, record.id, ttl_hours=12)
+        session.commit()
+    expect(api.patch(f"/users/{api.users['admin']}", {"status": "disabled"}), 409)
+    expect(api.patch(f"/users/{api.users['admin']}", {"role": "VIEWER"}), 409)
+
+    disabled = expect(api.patch(f"/users/{user_id}", {"status": "disabled"}))
+    assert disabled["status"] == "disabled"
+    expect(
+        api.client.get(PREFIX + "/me", headers={"Authorization": f"Bearer {credential}"}),
+        401,
+    )
+    with Session(api.engine) as session:
+        token = session.scalar(select(AccessToken).where(AccessToken.user_id == user_id))
+        assert token.revoked_at is not None
+
+    with Session(api.engine) as session:
+        # Re-enable the member to exercise the explicit session-revocation action.
+        record = session.get(User, user_id)
+        record.status = "active"
+        session.add(
+            AccessToken(
+                user_id=user_id,
+                token_hash=token_hash("ds_session_to_revoke"),
+                expires_at=datetime.now(UTC) + timedelta(hours=1),
+            )
+        )
+        session.commit()
+    revoked = expect(
+        api.post(
+            f"/users/{user_id}/revoke-sessions",
+            {},
+            key="revoke-temporary-sessions",
+        )
+    )
+    assert revoked["id"] == str(user_id)
+    expect(
+        api.client.get(
+            PREFIX + "/me",
+            headers={"Authorization": "Bearer ds_session_to_revoke"},
+        ),
+        401,
+    )
+
+
+def test_workspace_user_contract_rejects_null_and_extra_fields(api):
+    created = expect(
+        api.post(
+            "/users",
+            {"full_name": "Contract User", "email": "contract@example.com", "role": "VIEWER"},
+        ),
+        201,
+    )
+    expect(api.patch(f"/users/{created['id']}", {"role": None}), 422)
+    expect(api.patch(f"/users/{created['id']}", {"status": "active", "email": "x@y.z"}), 422)
+    expect(api.patch(f"/users/{created['id']}", {}), 422)

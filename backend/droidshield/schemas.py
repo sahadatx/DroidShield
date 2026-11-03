@@ -511,6 +511,50 @@ class MeOut(ResponseModel):
     status: Literal["active", "disabled"]
 
 
+UserRole = Literal["ADMIN", "SECURITY_ANALYST", "VIEWER"]
+UserStatus = Literal["active", "disabled"]
+
+
+class WorkspaceUserCreate(RequestModel):
+    full_name: Name
+    email: EmailStr
+    role: UserRole
+
+    @field_validator("email")
+    @classmethod
+    def normalized_email(cls, value: EmailStr) -> str:
+        return str(value).lower()
+
+
+class WorkspaceUserUpdate(RequestModel):
+    role: UserRole | None = None
+    status: UserStatus | None = None
+
+    @model_validator(mode="after")
+    def require_non_null_change(self):
+        if not self.model_fields_set:
+            raise ValueError("Provide a role or status change")
+        for field in ("role", "status"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
+
+
+class UserSessionRevoke(RequestModel):
+    """Empty, strict request body used to make session revocation idempotent."""
+
+
+class WorkspaceUserOut(ResponseModel):
+    id: UUID
+    workspace_id: UUID
+    email: EmailStr
+    full_name: str
+    role: UserRole
+    status: UserStatus
+    created_at: datetime
+    updated_at: datetime
+
+
 class PasswordLogin(RequestModel):
     email: EmailStr
     password: SecretStr

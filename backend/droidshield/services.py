@@ -4,6 +4,13 @@ Service functions flush changes and append audit records inside the supplied
 Session. The request or worker owns the surrounding commit/rollback boundary.
 """
 
+from droidshield.access_services import (
+    create_workspace_user,
+    revoke_workspace_user_sessions,
+    update_workspace_user,
+    user_query,
+    workspace_user,
+)
 from droidshield.assessment_services import (
     cancel_assessment,
     create_assessment,
@@ -69,6 +76,7 @@ __all__ = [
     "audit",
     "authorization",
     "cancel_assessment",
+    "create_workspace_user",
     "check_revision",
     "client",
     "client_query",
@@ -87,11 +95,15 @@ __all__ = [
     "require_admin",
     "require_writer",
     "revoke_authorization",
+    "revoke_workspace_user_sessions",
     "submit_assessment",
     "update_assessment",
     "update_client",
     "update_project",
+    "update_workspace_user",
+    "user_query",
     "utc",
     "verify_authorization",
+    "workspace_user",
     "visible_projects",
 ]
