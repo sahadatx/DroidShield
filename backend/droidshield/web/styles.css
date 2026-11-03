@@ -426,6 +426,10 @@ dialog::backdrop { background: rgb(8 24 39 / 65%); backdrop-filter: blur(4px); }
   .nav a, .button, .kpi, .top-search { transition: none; }
 }
 
+.user-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.user-actions .button { min-width: 0; }
+.user-actions .button svg { width: 13px; height: 13px; }
+
 /* Read-only record drawers use a compact, scannable hierarchy across all lists. */
 dialog.record-drawer { width: min(620px, 100vw); }
 dialog.record-drawer .record-head {

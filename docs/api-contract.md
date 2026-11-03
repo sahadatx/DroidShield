@@ -205,7 +205,7 @@ Names are 1–200 characters. For `platform: android` (default), Package ID is a
 
 `PATCH /projects/{id}` accepts editable Project fields plus `revision`; it does not change `client_id`. Package identity cannot change once an artifact or Assessment exists. Pausing/archiving is blocked while queued/running Assessments exist; reactivation requires an active parent Client. The archive body matches the Client archive body. Responses add common mutable metadata and `client_id`.
 
-`POST /projects/{id}/members` accepts `{"user_id": "<workspace-user-uuid>"}`. This is an ADMIN access grant, not a team invitation or user-creation API. Full Team & Access lifecycle remains planned.
+`POST /projects/{id}/members` accepts `{"user_id": "<workspace-user-uuid>"}`. This ADMIN access grant is separate from the workspace user lifecycle described above; it does not invite or create a user. The browser's Team & Access page manages workspace accounts, while password setup remains a trusted local CLI operation.
 
 Version name and code are not writable Project fields. `GET /projects/{id}/versions` reads artifact metadata after trusted ingestion: ID/ownership/creator/time, `project_id`, `version_name`, `version_code`, SHA-256, original filename, size and build type. No public endpoint accepts a caller's hash or storage reference as proof of an uploaded APK. The implemented protected ingestion pipeline calculates hashes from received bytes, validates archive/manifest content in the sandbox and links the immutable artifact to its assessment.
 

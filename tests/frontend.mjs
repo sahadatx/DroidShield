@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { ApiError, analysisCoverageSections, apiEvidenceSections, artifactFormat, assessmentWorkflowLabel, coverageMatrixMarkup, comparisonArtifactMarkup, createApi, dynamicScenarioOptions, dynamicDeviceLabel, endpointsFromForm, escapeHTML, exactHTTPSURL, formatBytes, kpiCards, makeQuery, metricCount, overviewFilterPanel, pager, parseRoute, reportSnapshotMarkup, runtimeEvidenceSections, splitTargets, valuesFromFields, viewAction } from "../backend/droidshield/web/app.js";
+import { ApiError, analysisCoverageSections, apiEvidenceSections, artifactFormat, assessmentWorkflowLabel, coverageMatrixMarkup, comparisonArtifactMarkup, createApi, dynamicScenarioOptions, dynamicDeviceLabel, endpointsFromForm, escapeHTML, exactHTTPSURL, formatBytes, kpiCards, makeQuery, metricCount, overviewFilterPanel, pager, parseRoute, reportSnapshotMarkup, runtimeEvidenceSections, splitTargets, valuesFromFields, viewAction, workspaceUserRow } from "../backend/droidshield/web/app.js";
 
 test("untrusted markup is encoded in text and attribute contexts", () => {
   assert.equal(escapeHTML('<img src=x onerror="alert(1)"> & \'x\''), "&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; &#39;x&#39;");
@@ -10,9 +10,35 @@ test("untrusted markup is encoded in text and attribute contexts", () => {
 
 test("navigation accepts known pages and bounded record identities only", () => {
   assert.deepEqual(parseRoute("#projects/01970000-1234-1234-1234-123456789abc"), {page:"projects",id:"01970000-1234-1234-1234-123456789abc"});
+  assert.deepEqual(parseRoute("#users"), {page:"users",id:null});
   assert.deepEqual(parseRoute("#https://example.com"), {page:"overview",id:null});
   assert.equal(parseRoute('#findings/<script>').id, null);
   assert.equal(parseRoute('').page, "overview");
+});
+
+test("workspace user rows escape identities and expose only admin actions",()=>{
+  const user={id:'01970000-1234-1234-1234-123456789abc',full_name:'<img src=x onerror="bad">',email:'member"><script>alert(1)</script>@example.test',role:"SECURITY_ANALYST",status:"disabled",created_at:"2026-10-28T12:00:00Z",password_hash:"never-render",session_token:"never-render"};
+  const row=workspaceUserRow(user,{canManage:true,currentUserId:"another-user"});
+  assert.match(row,/&lt;img src=x onerror=&quot;bad&quot;&gt;/);
+  assert.match(row,/member&quot;&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt;@example\.test/);
+  assert.match(row,/data-action="edit-user"/);
+  assert.match(row,/data-action="revoke-user-sessions"/);
+  assert.doesNotMatch(row,/<img|<script|password_hash|session_token|never-render/);
+  const self=workspaceUserRow(user,{canManage:true,currentUserId:user.id});
+  assert.match(self,/Current account/);
+  assert.doesNotMatch(self,/data-action="revoke-user-sessions"/);
+  const readOnly=workspaceUserRow(user);
+  assert.doesNotMatch(readOnly,/data-action="edit-user|data-action="revoke-user-sessions/);
+});
+
+test("Team and Access checks the role before loading the supported user directory",async()=>{
+  const source=await readFile(new URL("../backend/droidshield/web/app.js",import.meta.url),"utf8");
+  const page=source.slice(source.indexOf("async function usersPage"),source.indexOf("function userForm"));
+  assert.match(page,/if\(!admin\(\)\)return pageHeader\("Team & Access"/);
+  assert.match(page,/api\(`\/users\$\{makeQuery\(\{limit:25,offset:f\.offset\|\|0,role:f\.role,status:f\.status\}\)\}`/);
+  assert.match(source,/Set a password through the trusted local CLI/i);
+  const form=source.slice(source.indexOf("function userForm"),source.indexOf("function revokeUserSessionsForm"));
+  assert.doesNotMatch(form,/textField\("password"|name:\s*"password"/);
 });
 
 test("record table actions render an accessible eye icon and View label", () => {
@@ -223,7 +249,7 @@ test("distributed browser assets do not persist tokens or load executable third-
   assert.match(js,/name="email"/);assert.match(js,/name="password"/);assert.match(js,/\/auth\/session/);
   assert.doesNotMatch(js,/name="token"|Workspace access token|Authorization:\s*`Bearer/);
   assert.match(js,/credentials:"same-origin"/);
-  assert.match(html,/<script type="module" src="\/assets\/app\.js\?v=0\.5\.16"><\/script>/);
+  assert.match(html,/<script type="module" src="\/assets\/app\.js\?v=0\.5\.17"><\/script>/);
   assert.match(js,/<caption class="visually-hidden">\$\{e\(columns\[0\]\)\} records<\/caption>/);
   assert.doesNotMatch(js,/Portfolio preview · synthetic records\./);
   assert.match(css,/dialog\.record-drawer\s*\{/);

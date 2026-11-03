@@ -203,7 +203,7 @@ Delivered: a version-pinned local test library, persisted execution records, act
 
 Purpose: manage users and resource access.
 
-Table: name, email, role, account status, last login and creation time. Form: required full name, valid unique email, role; Active/Disabled status; secure account setup, require-password-change setting and project access. Admin action: revoke sessions. Temporary credentials, when supported, use a secure one-time setup flow and are never stored or returned in plaintext.
+Current table: name, email, role, account status and creation time. Administrators can filter by role and status, create a disabled account, update role/status, or revoke the sessions of another member. Password setup remains a trusted local CLI operation; no invitation, last-login, project-grant editor or temporary-password flow is exposed in the browser.
 
 Initial roles:
 
@@ -215,7 +215,7 @@ Initial roles:
 
 Reviewer and Client Viewer roles can be added later. Every endpoint checks role and object access on the server; hidden menus are only a presentation choice. Disabled accounts and revoked sessions cannot continue authenticated operations. Final report release and authorization verification must use explicit policy, with separation of duties available where required.
 
-Backend delivery: ADMIN-only workspace user listing, disabled-account creation, role/status updates and session revocation now use workspace-scoped services and audit events. Accounts require trusted local password setup before activation, and the last active administrator cannot be disabled or demoted. The browser still lacks the Team & Access management screens, last-login tracking and a self-service account invitation/setup flow. The browser signs in with email/password, salted scrypt hashes, HttpOnly expiring sessions and CSRF-checked writes; explicit bearer credentials remain available only for programmatic API clients. The ADMIN Project grant is implemented. Non-admin Project access is limited to created or explicitly granted Projects; linked Client visibility does not grant Client-editing rights.
+Backend and browser delivery: ADMIN-only workspace user listing, disabled-account creation, role/status updates and session revocation use workspace-scoped services and audit events. Team & Access is an administrator-only page with server-backed filters and pagination plus right-side create/edit/revoke drawers. Accounts require trusted local password setup before activation, and the last active administrator cannot be disabled or demoted. Last-login tracking and self-service invitation/setup remain unavailable. The browser signs in with email/password, salted scrypt hashes, HttpOnly expiring sessions and CSRF-checked writes; explicit bearer credentials remain available only for programmatic API clients. The ADMIN Project grant is implemented. Non-admin Project access is limited to created or explicitly granted Projects; linked Client visibility does not grant Client-editing rights.
 
 ### 13 — Audit Logs
 
