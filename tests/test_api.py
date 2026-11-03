@@ -1309,3 +1309,60 @@ def test_workspace_user_contract_rejects_null_and_extra_fields(api):
     expect(api.patch(f"/users/{created['id']}", {"role": None}), 422)
     expect(api.patch(f"/users/{created['id']}", {"status": "active", "email": "x@y.z"}), 422)
     expect(api.patch(f"/users/{created['id']}", {}), 422)
+
+
+@pytest.mark.parametrize(
+    ("role", "client_create_status", "project_update_status"),
+    [("admin", 201, 200), ("analyst", 201, 200), ("viewer", 403, 403)],
+)
+def test_workspace_role_matrix_for_client_and_project_writes(
+    api, role, client_create_status, project_update_status
+):
+    response = api.post("/clients", {"name": f"Created by {role}"}, role=role)
+    expect(response, client_create_status)
+
+    project = make_project(api)
+    if role in {"analyst", "viewer"}:
+        grant(api, project, role)
+    update = api.patch(
+        f"/projects/{project['id']}",
+        {"revision": project["revision"], "description": f"Updated by {role}"},
+        role=role,
+    )
+    body = expect(update, project_update_status)
+    if project_update_status == 200:
+        assert body["description"] == f"Updated by {role}"
+    else:
+        assert expect(api.get(f"/projects/{project['id']}"))["description"] is None
+
+
+@pytest.mark.parametrize("role", ["analyst", "viewer"])
+def test_project_grant_is_limited_to_one_project_and_its_client(api, role):
+    allowed_client = make_client(api, name="Allowed Client")
+    allowed_project = make_project(api, allowed_client, name="Allowed App")
+    allowed_assessment = make_assessment(api, allowed_project, name="Allowed Assessment")
+
+    sibling_project = make_project(api, allowed_client, name="Sibling App")
+    sibling_assessment = make_assessment(api, sibling_project, name="Sibling Assessment")
+    other_client = make_client(api, name="Other Client")
+    other_project = make_project(api, other_client, name="Other Client App")
+    other_assessment = make_assessment(api, other_project, name="Other Client Assessment")
+    grant(api, allowed_project, role)
+
+    projects = expect(api.get("/projects", role=role))
+    assert {record["id"] for record in projects["items"]} == {allowed_project["id"]}
+    clients = expect(api.get("/clients", role=role))
+    assert {record["id"] for record in clients["items"]} == {allowed_client["id"]}
+    assessments = expect(api.get("/assessments", role=role))
+    assert {record["id"] for record in assessments["items"]} == {allowed_assessment["id"]}
+
+    expect(api.get(f"/projects/{allowed_project['id']}", role=role))
+    expect(api.get(f"/assessments/{allowed_assessment['id']}", role=role))
+    for path in (
+        f"/projects/{sibling_project['id']}",
+        f"/assessments/{sibling_assessment['id']}",
+        f"/clients/{other_client['id']}",
+        f"/projects/{other_project['id']}",
+        f"/assessments/{other_assessment['id']}",
+    ):
+        expect(api.get(path, role=role), 404)
