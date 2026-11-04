@@ -23,14 +23,17 @@ from droidshield.models import (
     APITarget,
     AppArtifact,
     Assessment,
+    AssessmentEvidence,
     AuditEvent,
     Authorization,
     Client,
     DynamicSession,
+    Evidence,
     Finding,
     Project,
     Report,
     Retest,
+    TestExecution,
 )
 
 router = APIRouter()
@@ -49,6 +52,7 @@ AUDIT_EXPORT_SOURCE_KEYS = {
     "record_count",
     "filters",
 }
+OVERVIEW_ACTIVITY_LIMIT = 10
 
 
 def _audit_event_query(
@@ -152,6 +156,124 @@ def _audit_export_source(source):
         elif key == "format" and isinstance(value, str) and value in {"csv", "json"}:
             output[key] = value
     return output
+
+
+def _overview_activity(ctx, project_ids, assessment_ids, date_from, date_to):
+    """Return recent events only when their resource belongs to visible scope."""
+    client_ids = select(Project.client_id).where(
+        Project.workspace_id == ctx.workspace_id,
+        Project.id.in_(project_ids),
+    )
+    finding_ids = select(Finding.id).where(
+        Finding.workspace_id == ctx.workspace_id,
+        Finding.assessment_id.in_(assessment_ids),
+    )
+    scoped_resources = or_(
+        (AuditEvent.resource_type == "client") & AuditEvent.resource_id.in_(client_ids),
+        (AuditEvent.resource_type == "project") & AuditEvent.resource_id.in_(project_ids),
+        (AuditEvent.resource_type == "authorization")
+        & AuditEvent.resource_id.in_(
+            select(Authorization.id).where(
+                Authorization.workspace_id == ctx.workspace_id,
+                Authorization.project_id.in_(project_ids),
+            )
+        ),
+        (AuditEvent.resource_type == "assessment") & AuditEvent.resource_id.in_(assessment_ids),
+        (AuditEvent.resource_type == "app_artifact")
+        & AuditEvent.resource_id.in_(
+            select(AppArtifact.id).where(
+                AppArtifact.workspace_id == ctx.workspace_id,
+                AppArtifact.project_id.in_(project_ids),
+            )
+        ),
+        (AuditEvent.resource_type == "analysis_job")
+        & AuditEvent.resource_id.in_(
+            select(AnalysisJob.id).where(
+                AnalysisJob.workspace_id == ctx.workspace_id,
+                AnalysisJob.assessment_id.in_(assessment_ids),
+            )
+        ),
+        (AuditEvent.resource_type == "dynamic_session")
+        & AuditEvent.resource_id.in_(
+            select(DynamicSession.id).where(
+                DynamicSession.workspace_id == ctx.workspace_id,
+                DynamicSession.assessment_id.in_(assessment_ids),
+            )
+        ),
+        (AuditEvent.resource_type == "finding") & AuditEvent.resource_id.in_(finding_ids),
+        (AuditEvent.resource_type == "evidence")
+        & AuditEvent.resource_id.in_(
+            select(Evidence.id).where(
+                Evidence.workspace_id == ctx.workspace_id,
+                Evidence.finding_id.in_(finding_ids),
+            )
+        ),
+        (AuditEvent.resource_type == "evidence")
+        & AuditEvent.resource_id.in_(
+            select(AssessmentEvidence.id).where(
+                AssessmentEvidence.workspace_id == ctx.workspace_id,
+                AssessmentEvidence.assessment_id.in_(assessment_ids),
+            )
+        ),
+        (AuditEvent.resource_type == "test_execution")
+        & AuditEvent.resource_id.in_(
+            select(TestExecution.id).where(
+                TestExecution.workspace_id == ctx.workspace_id,
+                TestExecution.assessment_id.in_(assessment_ids),
+            )
+        ),
+        (AuditEvent.resource_type == "report")
+        & AuditEvent.resource_id.in_(
+            select(Report.id).where(
+                Report.workspace_id == ctx.workspace_id,
+                Report.assessment_id.in_(assessment_ids),
+            )
+        ),
+        (AuditEvent.resource_type == "retest")
+        & AuditEvent.resource_id.in_(
+            select(Retest.id).where(
+                Retest.workspace_id == ctx.workspace_id,
+                Retest.original_assessment_id.in_(assessment_ids),
+            )
+        ),
+        (AuditEvent.resource_type == "api_target")
+        & AuditEvent.resource_id.in_(
+            select(APITarget.id).where(
+                APITarget.workspace_id == ctx.workspace_id,
+                APITarget.assessment_id.in_(assessment_ids),
+            )
+        ),
+        (AuditEvent.resource_type == "api_execution")
+        & AuditEvent.resource_id.in_(
+            select(APIExecution.id).where(
+                APIExecution.workspace_id == ctx.workspace_id,
+                APIExecution.assessment_id.in_(assessment_ids),
+            )
+        ),
+    )
+    query = select(AuditEvent).where(
+        AuditEvent.workspace_id == ctx.workspace_id,
+        scoped_resources,
+    )
+    if date_from:
+        query = query.where(AuditEvent.created_at >= datetime.combine(date_from, time.min, UTC))
+    if date_to:
+        query = query.where(AuditEvent.created_at <= datetime.combine(date_to, time.max, UTC))
+    events = ctx.session.scalars(
+        query.order_by(AuditEvent.created_at.desc(), AuditEvent.id).limit(OVERVIEW_ACTIVITY_LIMIT)
+    ).all()
+    return [
+        {
+            "id": event.id,
+            "timestamp": utc(event.created_at),
+            "actor_id": event.actor_id,
+            "action": event.action,
+            "resource_type": event.resource_type,
+            "resource_id": event.resource_id,
+            "result": event.result,
+        }
+        for event in events
+    ]
 
 
 def _audit_export_record(item):
@@ -673,6 +795,9 @@ def overview(
         *created_between(APIExecution),
     )
     artifact_count = sum(artifact_formats.values())
+    pending_assessment_reviews = assessment_counts.get("needs_review", 0)
+    pending_report_reviews = report_status.get("awaiting_review", 0)
+    pending_retest_reviews = retests_awaiting_review
     return {
         "total_clients": sum(client_status.values()),
         "active_clients": client_status.get("active", 0),
@@ -695,7 +820,7 @@ def overview(
         "critical_findings": severity["critical"],
         "high_findings": severity["high"],
         "severity": severity,
-        "pending_reviews": assessment_counts.get("needs_review", 0),
+        "pending_reviews": pending_assessment_reviews,
         "total_reports": sum(report_status.values()),
         "reports_awaiting_review": report_status.get("awaiting_review", 0),
         "reports_approved": report_status.get("approved", 0),
@@ -727,6 +852,15 @@ def overview(
         "api_executions_running": api_status.get("running", 0),
         "api_executions_completed": api_status.get("completed", 0),
         "api_executions_failed": api_status.get("failed", 0),
+        "recent_activity": _overview_activity(
+            ctx, count_project_ids, assessment_ids, date_from, date_to
+        ),
+        "pending_actions": {
+            "assessment_reviews": pending_assessment_reviews,
+            "report_reviews": pending_report_reviews,
+            "retest_reviews": pending_retest_reviews,
+            "total": (pending_assessment_reviews + pending_report_reviews + pending_retest_reviews),
+        },
     }
 
 

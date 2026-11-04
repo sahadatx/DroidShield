@@ -195,6 +195,27 @@ class Page(ResponseModel, Generic[Output]):
     offset: int
 
 
+class OverviewActivityOut(ResponseModel):
+    """Safe, project-scoped activity for the Overview dashboard."""
+
+    id: UUID
+    timestamp: datetime
+    actor_id: UUID | None
+    action: Annotated[str, StringConstraints(min_length=1, max_length=128)]
+    resource_type: Annotated[str, StringConstraints(min_length=1, max_length=64)]
+    resource_id: UUID | None
+    result: Literal["success", "failure"]
+
+
+class OverviewPendingActionsOut(ResponseModel):
+    """Persisted review queues that currently need an independent decision."""
+
+    assessment_reviews: int
+    report_reviews: int
+    retest_reviews: int
+    total: int
+
+
 class OverviewOut(ResponseModel):
     """Workspace and accessible-project counts used by dashboard cards."""
 
@@ -241,6 +262,8 @@ class OverviewOut(ResponseModel):
     api_executions_running: int
     api_executions_completed: int
     api_executions_failed: int
+    recent_activity: list[OverviewActivityOut]
+    pending_actions: OverviewPendingActionsOut
 
 
 class AuditEventOut(ResponseModel):

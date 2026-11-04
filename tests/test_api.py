@@ -30,6 +30,8 @@ from droidshield.models import (
     Finding,
     LoginRateLimitEntry,
     ProjectAccess,
+    Report,
+    Retest,
     User,
     Workspace,
     WorkspaceSettings,
@@ -1319,6 +1321,13 @@ def test_overview_counts_database_records_and_respects_project_visibility(api):
     assert empty["total_projects"] == empty["total_assessments"] == empty["open_findings"] == 0
     assert empty["total_clients"] == empty["total_artifacts"] == empty["total_reports"] == 0
     assert empty["artifact_formats"] == {"apk": 0, "aab": 0, "ipa": 0}
+    assert empty["recent_activity"] == []
+    assert empty["pending_actions"] == {
+        "assessment_reviews": 0,
+        "report_reviews": 0,
+        "retest_reviews": 0,
+        "total": 0,
+    }
     first, second = make_project(api), make_project(api)
     permit = make_authorization(api, first)
     active = make_assessment(api, first, permit)
@@ -1371,6 +1380,125 @@ def test_overview_counts_database_records_and_respects_project_visibility(api):
     assert restricted["total_findings"] == 3
     assert restricted["total_clients"] == 1
     assert restricted["severity"]["medium"] == 0
+
+
+def test_overview_summarizes_scoped_activity_and_persisted_review_queues(api):
+    project = make_project(api, name="Visible activity project")
+    hidden_project = make_project(api, name="Hidden activity project")
+    permit = make_authorization(api, project)
+    assessment = make_assessment(api, project, permit)
+    hidden_assessment = make_assessment(api, hidden_project)
+    workspace_id = api.workspaces["main"]
+    project_id = UUID(project["id"])
+    assessment_id = UUID(assessment["id"])
+    with Session(api.engine) as session:
+        session.get(Assessment, assessment_id).status = "needs_review"
+        session.get(Assessment, UUID(hidden_assessment["id"])).status = "completed"
+        finding = Finding(
+            workspace_id=workspace_id,
+            project_id=project_id,
+            assessment_id=assessment_id,
+            created_by=api.users["admin"],
+            title="Pending retest finding",
+            description="A test finding with review evidence.",
+            affected_component="Mobile API",
+            category="authorization",
+            severity="high",
+            verification_status="confirmed",
+            remediation_status="retest_required",
+            reproduction_steps="Reproduce with the authorized test account.",
+            impact="A scoped test account can access another record.",
+            remediation="Enforce object-level authorization.",
+        )
+        session.add(finding)
+        session.flush()
+        report = Report(
+            workspace_id=workspace_id,
+            project_id=project_id,
+            assessment_id=assessment_id,
+            title="Pending review report",
+            template="combined",
+            version=1,
+            status="awaiting_review",
+            filters={},
+            branding={},
+            author_id=api.users["analyst"],
+        )
+        retest = Retest(
+            workspace_id=workspace_id,
+            project_id=project_id,
+            finding_id=finding.id,
+            original_assessment_id=assessment_id,
+            new_artifact_id=None,
+            method="api",
+            operator_id=api.users["analyst"],
+            environment={},
+            previous_evidence=[],
+            new_evidence=[],
+            result="inconclusive",
+            notes="Pending independent review of the recorded result.",
+        )
+        session.add_all([report, retest])
+        session.flush()
+        visible_event = AuditEvent(
+            workspace_id=workspace_id,
+            actor_id=api.users["analyst"],
+            action="assessment.reviewed",
+            resource_type="assessment",
+            resource_id=assessment_id,
+            result="success",
+            request_id="overview-visible-event",
+            source_metadata={"private_value": "must-not-be-returned"},
+        )
+        hidden_event = AuditEvent(
+            workspace_id=workspace_id,
+            actor_id=api.users["analyst"],
+            action="assessment.reviewed",
+            resource_type="assessment",
+            resource_id=UUID(hidden_assessment["id"]),
+            result="success",
+            request_id="overview-hidden-event",
+            source_metadata={},
+        )
+        global_event = AuditEvent(
+            workspace_id=workspace_id,
+            actor_id=api.users["admin"],
+            action="user.updated",
+            resource_type="user",
+            resource_id=api.users["analyst"],
+            result="success",
+            request_id="overview-global-event",
+            source_metadata={},
+        )
+        session.add_all([visible_event, hidden_event, global_event])
+        session.commit()
+        visible_event_id = str(visible_event.id)
+        hidden_event_id = str(hidden_event.id)
+        global_event_id = str(global_event.id)
+
+    overview = expect(api.get("/overview"))
+    assert overview["pending_actions"] == {
+        "assessment_reviews": 1,
+        "report_reviews": 1,
+        "retest_reviews": 1,
+        "total": 3,
+    }
+    assert overview["pending_reviews"] == 1
+    assert overview["reports_awaiting_review"] == 1
+    assert overview["retests_awaiting_review"] == 1
+    admin_activity_ids = {item["id"] for item in overview["recent_activity"]}
+    assert visible_event_id in admin_activity_ids
+    assert hidden_event_id in admin_activity_ids
+    assert global_event_id not in admin_activity_ids
+    assert "must-not-be-returned" not in str(overview)
+
+    grant(api, project, "viewer")
+    restricted = expect(api.get("/overview", role="viewer"))
+    restricted_activity_ids = {item["id"] for item in restricted["recent_activity"]}
+    assert visible_event_id in restricted_activity_ids
+    assert hidden_event_id not in restricted_activity_ids
+    assert global_event_id not in restricted_activity_ids
+    assert restricted["pending_actions"] == overview["pending_actions"]
 
 
 def test_overview_filters_scope_counts_and_recent_assessments(api):

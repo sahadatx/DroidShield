@@ -3945,6 +3945,68 @@
         ],
         "type": "object"
       },
+      "OverviewActivityOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resource_type": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "result": {
+            "enum": [
+              "success",
+              "failure"
+            ],
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "timestamp",
+          "actor_id",
+          "action",
+          "resource_type",
+          "resource_id",
+          "result"
+        ],
+        "type": "object"
+      },
       "OverviewOut": {
         "additionalProperties": false,
         "properties": {
@@ -4021,11 +4083,20 @@
           "open_findings": {
             "type": "integer"
           },
+          "pending_actions": {
+            "$ref": "#/components/schemas/OverviewPendingActionsOut"
+          },
           "pending_reviews": {
             "type": "integer"
           },
           "queued_assessments": {
             "type": "integer"
+          },
+          "recent_activity": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewActivityOut"
+            },
+            "type": "array"
           },
           "reports_approved": {
             "type": "integer"
@@ -4143,7 +4214,33 @@
           "api_executions_queued",
           "api_executions_running",
           "api_executions_completed",
-          "api_executions_failed"
+          "api_executions_failed",
+          "recent_activity",
+          "pending_actions"
+        ],
+        "type": "object"
+      },
+      "OverviewPendingActionsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "assessment_reviews": {
+            "type": "integer"
+          },
+          "report_reviews": {
+            "type": "integer"
+          },
+          "retest_reviews": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "assessment_reviews",
+          "report_reviews",
+          "retest_reviews",
+          "total"
         ],
         "type": "object"
       },
