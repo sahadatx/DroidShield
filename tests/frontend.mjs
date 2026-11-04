@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { ApiError, analysisCoverageSections, apiEvidenceSections, artifactFormat, assessmentWorkflowLabel, auditExportPath, coverageMatrixMarkup, comparisonArtifactMarkup, createApi, dynamicScenarioOptions, dynamicDeviceLabel, endpointsFromForm, escapeHTML, exactHTTPSURL, formatBytes, kpiCards, makeQuery, metricCount, overviewActivityMarkup, overviewPendingActionsMarkup, overviewFilterPanel, pager, parseRoute, reportSnapshotMarkup, runtimeEvidenceSections, splitTargets, valuesFromFields, viewAction, workspaceSettingsMarkup, workspaceSettingsPayload, workspaceSecretStatusMarkup, workspaceUserRow } from "../backend/droidshield/web/app.js";
+import { ApiError, analysisCoverageSections, apiEvidenceSections, artifactFormat, assessmentWorkflowLabel, auditExportPath, coverageMatrixMarkup, comparisonArtifactMarkup, createApi, dynamicScenarioOptions, dynamicDeviceLabel, endpointsFromForm, escapeHTML, exactHTTPSURL, formatBytes, kpiCards, makeQuery, metricCount, overviewActivityMarkup, overviewPendingActionsMarkup, overviewFilterPanel, pager, parseRoute, reportSnapshotMarkup, riskTrendMarkup, runtimeEvidenceSections, splitTargets, valuesFromFields, viewAction, workspaceSettingsMarkup, workspaceSettingsPayload, workspaceSecretStatusMarkup, workspaceUserRow } from "../backend/droidshield/web/app.js";
 
 test("untrusted markup is encoded in text and attribute contexts", () => {
   assert.equal(escapeHTML('<img src=x onerror="alert(1)"> & \'x\''), "&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; &#39;x&#39;");
@@ -173,8 +173,30 @@ test("KPI values are database counts, labels are escaped, and color tones are se
 
 test("overview filters expose project, assessment and date scopes with automatic reset layout", () => {
   const html=overviewFilterPanel();
-  for(const name of ["project_id","assessment_type","assessment_status","date_from","date_to"])assert.match(html,new RegExp(`name="${name}"`));
+  for(const name of ["project_id","assessment_type","assessment_status","date_from","date_to","trend_days"])assert.match(html,new RegExp(`name="${name}"`));
+  assert.match(html,/<option value="30" selected>Last 30 days<\/option>/);assert.match(html,/Last 7 days/);assert.match(html,/Last 90 days/);
   assert.match(html,/Reset filters/);assert.match(html,/Results update automatically/);
+});
+
+test("overview risk trend shows severity counts, overdue retests and accessible daily data", () => {
+  const markup=riskTrendMarkup([
+    {date:"2026-11-03",critical:1,high:2,medium:0,low:1,info:0,total:999},
+    {date:"2026-11-04",critical:0,high:0,medium:1,low:0,info:0,total:1},
+    {date:"<img src=x>",critical:50,high:0,medium:0,low:0,info:0},
+    {date:"2026-02-31",critical:50,high:0,medium:0,low:0,info:0}
+  ],7,2);
+  assert.match(markup,/role="region" tabindex="0" aria-label="Scrollable risk trend chart"/);
+  assert.match(markup,/last 7 days/i);
+  assert.match(markup,/Currently open findings in this window/);
+  assert.match(markup,/Overdue retests/);
+  assert.match(markup,/<strong>2<\/strong>/);
+  assert.match(markup,/Critical/);assert.match(markup,/High/);assert.match(markup,/Medium/);assert.match(markup,/Low/);assert.match(markup,/Info/);
+  assert.match(markup,/View daily data/);assert.match(markup,/2026-11-03/);
+  assert.doesNotMatch(markup,/<img src=x>/);
+  assert.doesNotMatch(markup,/2026-02-31/);
+  assert.doesNotMatch(markup,/>999</);
+  assert.match(markup,/not a historical snapshot/);
+  assert.match(riskTrendMarkup([],30,0),/No trend data available/);
 });
 
 test("overview renders scoped activity and API-backed review queues safely", () => {
