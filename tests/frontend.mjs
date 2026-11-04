@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { ApiError, analysisCoverageSections, apiEvidenceSections, artifactFormat, assessmentWorkflowLabel, auditExportPath, coverageMatrixMarkup, comparisonArtifactMarkup, createApi, dynamicScenarioOptions, dynamicDeviceLabel, endpointsFromForm, escapeHTML, exactHTTPSURL, formatBytes, kpiCards, makeQuery, metricCount, overviewFilterPanel, pager, parseRoute, reportSnapshotMarkup, runtimeEvidenceSections, splitTargets, valuesFromFields, viewAction, workspaceSettingsMarkup, workspaceSettingsPayload, workspaceSecretStatusMarkup, workspaceUserRow } from "../backend/droidshield/web/app.js";
+import { ApiError, analysisCoverageSections, apiEvidenceSections, artifactFormat, assessmentWorkflowLabel, auditExportPath, coverageMatrixMarkup, comparisonArtifactMarkup, createApi, dynamicScenarioOptions, dynamicDeviceLabel, endpointsFromForm, escapeHTML, exactHTTPSURL, formatBytes, kpiCards, makeQuery, metricCount, overviewActivityMarkup, overviewPendingActionsMarkup, overviewFilterPanel, pager, parseRoute, reportSnapshotMarkup, runtimeEvidenceSections, splitTargets, valuesFromFields, viewAction, workspaceSettingsMarkup, workspaceSettingsPayload, workspaceSecretStatusMarkup, workspaceUserRow } from "../backend/droidshield/web/app.js";
 
 test("untrusted markup is encoded in text and attribute contexts", () => {
   assert.equal(escapeHTML('<img src=x onerror="alert(1)"> & \'x\''), "&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; &#39;x&#39;");
@@ -175,6 +175,27 @@ test("overview filters expose project, assessment and date scopes with automatic
   const html=overviewFilterPanel();
   for(const name of ["project_id","assessment_type","assessment_status","date_from","date_to"])assert.match(html,new RegExp(`name="${name}"`));
   assert.match(html,/Reset filters/);assert.match(html,/Results update automatically/);
+});
+
+test("overview renders scoped activity and API-backed review queues safely", () => {
+  const id="01970000-1234-1234-1234-123456789abc";
+  const activity=overviewActivityMarkup([
+    {id,actor_id:id,action:"finding.reviewed",resource_type:"finding",resource_id:id,result:"success",timestamp:"2026-11-04T12:00:00Z"},
+    {id,actor_id:null,action:"assessment.<img src=x>",resource_type:"unknown",resource_id:"unsafe",result:"failure",timestamp:"2026-11-04T12:01:00Z"}
+  ]);
+  assert.match(activity,/Finding Reviewed/);
+  assert.match(activity,/href="#findings\/01970000-1234-1234-1234-123456789abc"/);
+  assert.match(activity,/&lt;Img Src=X&gt;/);
+  assert.match(activity,/class="tag failure"/);
+  assert.doesNotMatch(activity,/<img src=x>/);
+  assert.match(overviewActivityMarkup([]),/No recent activity/);
+
+  const pending=overviewPendingActionsMarkup({assessment_reviews:2,report_reviews:1,retest_reviews:3,total:6});
+  assert.match(pending,/<strong>6<\/strong>/);
+  assert.match(pending,/Assessment review/);
+  assert.match(pending,/href="#reports"/);
+  assert.match(pending,/href="#retesting"/);
+  assert.match(overviewPendingActionsMarkup({assessment_reviews:0,report_reviews:0,retest_reviews:0,total:0}),/You're up to date/);
 });
 
 test("service delivery forms serialize selected evidence and strict booleans without extra fields", () => {

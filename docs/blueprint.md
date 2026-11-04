@@ -49,7 +49,7 @@ Layout: KPI row; risk trend and severity distribution; recent assessments, lates
 | Activity | Recent persisted resource events within the actor's accessible project scope; event type, actor ID and timestamp |
 | Pending actions | Database-derived assessment, report and retest review queues |
 
-Filters: date range, project and assessment status. Actions: New Project, New Assessment, View Findings and Generate Report, subject to role and prerequisites. Backend requirement: authorized aggregates and recent-resource queries, with a consistent definition of open and overdue. `GET /api/v1/overview` provides persisted project/assessment counts, queued/running count, confirmed non-fixed finding counts by severity, assessment/report/retest review queue totals and up to 10 sanitized recent events from accessible resources. Trends, overdue retests and dashboard filter controls remain planned.
+Filters: date range, project and assessment status. Actions: New Project, New Assessment, View Findings and Generate Report, subject to role and prerequisites. Backend requirement: authorized aggregates and recent-resource queries, with a consistent definition of open and overdue. `GET /api/v1/overview` provides persisted project/assessment counts, queued/running count, confirmed non-fixed finding counts by severity, assessment/report/retest review queue totals and up to 10 sanitized recent events from accessible resources; the browser renders the activity and review queues from that response. Risk trends and overdue-retest summaries remain planned.
 
 ### 02 — Clients
 

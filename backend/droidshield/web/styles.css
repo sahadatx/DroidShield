@@ -181,6 +181,9 @@ h3 { font-size: 13px; line-height: 1.4; font-weight: 640; }
 .kpi-foot { color: #7c8d9b; font-size: 10.5px; margin-top: 11px; }
 .kpi-icon { width: 35px; height: 35px; border-radius: 10px; background: #e7f5f2; color: #168578; }
 .dashboard-grid { grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr); gap: 18px; }
+.dashboard-grid .activity-card { grid-column: 1 / -1; }
+.activity-row > div { min-width: 0; flex: 1; }
+.activity-row p:last-child { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .detail-grid { gap: 18px; }
 .posture { gap: 16px; padding: 16px 0 13px; }
 .posture-ring { width: 86px; height: 86px; border-color: #e0f0eb; background: #fbfefd; }
@@ -206,9 +209,10 @@ td .subtext { color: #788b9b; font-size: 10px; }
 .app-icon { width: 35px; height: 37px; border-radius: 10px; background: #eaf5f2; color: #438779; }
 .tag { border-radius: 999px; padding: 4px 9px; font-size: 9px; font-weight: 640; letter-spacing: .1px; }
 .tag.active, .tag.verified, .tag.completed, .tag.pass, .tag.confirmed, .tag.approved, .tag.approve, .tag.exported { background: #e6f5ec; color: #347855; }
+.tag.success { background: #e6f5ec; color: #347855; }
 .tag.running, .tag.queued, .tag.in_progress { background: #eaf1fc; color: #466f9f; }
 .tag.needs_review, .tag.pending, .tag.awaiting_authorization, .tag.unreviewed, .tag.blocked, .tag.awaiting_review { background: #fff5df; color: #967125; }
-.tag.high, .tag.critical, .tag.failed, .tag.fail, .tag.revoked, .tag.reject { background: #fcebea; color: #a94f53; }
+.tag.high, .tag.critical, .tag.failed, .tag.fail, .tag.failure, .tag.revoked, .tag.reject { background: #fcebea; color: #a94f53; }
 .tag.medium { background: #fff4dc; color: #967125; }
 .tag.low { background: #e6f5ec; color: #347855; }
 .tag.info { background: #ebf1f8; color: #557594; }
@@ -702,10 +706,10 @@ td .subtext { color: #819aa1; }
 .row-link:hover { color: #a1f3e4; }
 .app-icon { color: #74d9c5; background: #123631; }
 .tag { border-color: rgb(255 255 255 / 4%); background: #1b3037; color: #b1c3c7; }
-.tag.active, .tag.verified, .tag.completed, .tag.pass, .tag.confirmed, .tag.approved, .tag.approve, .tag.exported { color: #8ee0bd; background: #17362c; }
+.tag.active, .tag.verified, .tag.completed, .tag.pass, .tag.confirmed, .tag.approved, .tag.approve, .tag.exported, .tag.success { color: #8ee0bd; background: #17362c; }
 .tag.running, .tag.queued, .tag.in_progress { color: #a4c6f0; background: #1a2e43; }
 .tag.needs_review, .tag.pending, .tag.awaiting_authorization, .tag.unreviewed, .tag.blocked, .tag.awaiting_review { color: #ead28b; background: #3a321c; }
-.tag.high, .tag.critical, .tag.failed, .tag.fail, .tag.revoked, .tag.reject { color: #f1a0a4; background: #3c2227; }
+.tag.high, .tag.critical, .tag.failed, .tag.fail, .tag.failure, .tag.revoked, .tag.reject { color: #f1a0a4; background: #3c2227; }
 .tag.medium { color: #ebd18a; background: #3a321c; }
 .tag.low { color: #92dfbf; background: #17362c; }
 .tag.info, .tag.not_run, .tag.na { color: #a7c6d9; background: #1b2e38; }
@@ -1223,10 +1227,10 @@ td .subtext { color: #7c8b95; font-size: 9px; }
 .row-link:hover { color: #8de8dc; }
 .app-icon { color: #57d2c5; background: #183034; }
 .tag { border-color: #293741; border-radius: 6px; padding: 4px 7px; color: #aab8c1; background: #25313a; font-size: 8px; font-weight: 600; letter-spacing: .15px; }
-.tag.active, .tag.verified, .tag.completed, .tag.pass, .tag.confirmed, .tag.approved, .tag.approve, .tag.exported { color: #6fddbd; background: #15352f; }
+.tag.active, .tag.verified, .tag.completed, .tag.pass, .tag.confirmed, .tag.approved, .tag.approve, .tag.exported, .tag.success { color: #6fddbd; background: #15352f; }
 .tag.running, .tag.queued, .tag.in_progress { color: #9bc8fb; background: #172c40; }
 .tag.needs_review, .tag.pending, .tag.awaiting_authorization, .tag.unreviewed, .tag.blocked, .tag.awaiting_review { color: #e7b277; background: #392c1e; }
-.tag.high, .tag.critical, .tag.failed, .tag.fail, .tag.revoked, .tag.reject { color: #ff9393; background: #3e2427; }
+.tag.high, .tag.critical, .tag.failed, .tag.fail, .tag.failure, .tag.revoked, .tag.reject { color: #ff9393; background: #3e2427; }
 .tag.medium { color: #f0c36e; background: #3a321f; }
 .tag.low { color: #78d9b0; background: #17352e; }
 .tag.info, .tag.not_run, .tag.na { color: #9ebbd0; background: #1b2e38; }
