@@ -19,6 +19,10 @@ export const formatBytes = (value) => { const n=Number(value); if (!Number.isFin
 const pages = new Set(["overview","clients","projects","assessments","apk","dynamic","api","api-executions","findings","methodology","retesting","reports","audit","users","settings"]);
 export function parseRoute(hash) { const [raw,id] = String(hash || "#overview").replace(/^#\/?/, "").split("/"); return { page:pages.has(raw) ? raw : "overview", id:/^[a-f0-9-]{36}$/i.test(id || "") ? id : null }; }
 export function makeQuery(values) { const q=new URLSearchParams(); for(const [k,v] of Object.entries(values)) if(v!==""&&v!==null&&v!==undefined) q.set(k,String(v)); return q.size ? `?${q}` : ""; }
+export function auditExportPath(filters={},format="csv") {
+  if(!["csv","json"].includes(format))throw new Error("Choose CSV or JSON for the audit export.");
+  return `/audit-events/export${makeQuery({format,action:String(filters.action||"").trim(),resource_type:String(filters.resource_type||"").trim(),result:filters.result,actor_id:String(filters.actor_id||"").trim(),resource_id:String(filters.resource_id||"").trim(),date_from:filters.date_from,date_to:filters.date_to})}`;
+}
 export function valuesFromFields(fields, data) {
   const out={};
   for(const field of fields) {
@@ -381,9 +385,10 @@ async function auditPage(signal){
   if(!admin())return pageHeader("Audit logs","Workspace activity is restricted to administrators.")+notice("Administrator access is required to read audit events.","warning");
   const f=filters.audit||{};
   const data=await api(`/audit-events${makeQuery({limit:25,offset:f.offset||0,action:f.action,resource_type:f.resource_type,result:f.result,actor_id:f.actor_id,resource_id:f.resource_id,date_from:f.date_from,date_to:f.date_to})}`,{signal});
-  const filtersMarkup=filterPanel(`<label class="filter-field"><span>Action</span><input name="action" placeholder="Exact action, e.g. assessment.created" aria-label="Exact action" maxlength="128" value="${e(f.action||"")}"></label><label class="filter-field"><span>Resource type</span><input name="resource_type" placeholder="Exact resource type" aria-label="Exact resource type" maxlength="64" value="${e(f.resource_type||"")}"></label>${filterSelect("result","Result",[["success","Success"],["failure","Failure"]],f.result,"All results")}<label class="filter-field"><span>Actor ID</span><input name="actor_id" placeholder="User UUID" aria-label="Actor ID" maxlength="36" value="${e(f.actor_id||"")}"></label><label class="filter-field"><span>Resource ID</span><input name="resource_id" placeholder="Project, finding or report UUID" aria-label="Resource ID" maxlength="36" value="${e(f.resource_id||"")}"></label><label class="filter-field"><span>From date</span><input name="date_from" type="date" aria-label="From date" value="${e(f.date_from||"")}"></label><label class="filter-field"><span>To date</span><input name="date_to" type="date" aria-label="To date" value="${e(f.date_to||"")}"></label>`,f);
+  const filtersMarkup=filterPanel(`<label class="filter-field"><span>Action (exact)</span><input name="action" placeholder="e.g. assessment.created" aria-label="Exact action name" maxlength="128" value="${e(f.action||"")}"></label><label class="filter-field"><span>Resource type (exact)</span><input name="resource_type" placeholder="e.g. project, finding, report" aria-label="Exact resource type" maxlength="64" value="${e(f.resource_type||"")}"></label>${filterSelect("result","Result",[["success","Success"],["failure","Failure"]],f.result,"All results")}<label class="filter-field"><span>Actor ID</span><input name="actor_id" placeholder="Actor user UUID" aria-label="Actor ID" maxlength="36" value="${e(f.actor_id||"")}"></label><label class="filter-field"><span>Resource ID</span><input name="resource_id" placeholder="Project, finding, report UUID…" aria-label="Resource ID" maxlength="36" value="${e(f.resource_id||"")}"></label><label class="filter-field"><span>From date (UTC)</span><input name="date_from" type="date" aria-label="From date, UTC" value="${e(f.date_from||"")}"></label><label class="filter-field"><span>Through date (UTC)</span><input name="date_to" type="date" aria-label="Through date, UTC" value="${e(f.date_to||"")}"></label>`,f);
   const kpis=[["Matching events",data.total,"Current filter result count","history","cyan"],["Successful",metricCount(data.summary,"success"),"Matching successful actions","check","green"],["Failed",metricCount(data.summary,"failure"),"Matching failed actions","bug","red"]];
-  return pageHeader("Audit logs","Trace important workspace actions through immutable, sanitized event history.")+kpiCards(kpis)+card("Audit trail",`${data.total} recorded events`,filtersMarkup+table(["Timestamp","Event","Actor","Resource","Result","Request ID","Action"],data.items.map(a=>`<tr><td>${e(date(a.timestamp))}</td><td><strong class="title">${e(a.action)}</strong></td><td class="mono">${e(a.actor_id)}</td><td>${e(a.resource_type)}<span class="subtext mono">${e(a.resource_id||"—")}</span></td><td>${tag(a.result)}</td><td class="mono">${e(a.request_id)}</td><td>${btn("view-audit-event","View","eye","small",`data-timestamp="${e(a.timestamp)}" data-action-name="${e(a.action)}" data-actor="${e(a.actor_id)}" data-resource-type="${e(a.resource_type)}" data-resource-id="${e(a.resource_id||"")}" data-result="${e(a.result)}" data-request-id="${e(a.request_id)}"`)}</td></tr>`),"No matching audit events","Recorded actions will appear here. Audit records cannot be edited or deleted.")+pager(data));
+  const actions=`${btn("export-audit","Export CSV","download","secondary",'data-format="csv"')}${btn("export-audit","Export JSON","download","secondary",'data-format="json"')}`;
+  return pageHeader("Audit logs","Trace important workspace actions through immutable, sanitized event history.",actions)+kpiCards(kpis)+card("Audit trail",`${data.total} recorded events`,filtersMarkup+`<p class="filter-hint audit-export-hint">Exports include all matching events (up to 10,000 records / 10 MiB) and are recorded in this audit trail.</p>`+table(["Timestamp","Event","Actor","Resource","Result","Request ID","Action"],data.items.map(a=>`<tr><td>${e(date(a.timestamp))}</td><td><strong class="title">${e(a.action)}</strong></td><td class="mono">${e(a.actor_id)}</td><td>${e(a.resource_type)}<span class="subtext mono">${e(a.resource_id||"—")}</span></td><td>${tag(a.result)}</td><td class="mono">${e(a.request_id)}</td><td>${btn("view-audit-event","View","eye","small",`data-timestamp="${e(a.timestamp)}" data-action-name="${e(a.action)}" data-actor="${e(a.actor_id)}" data-resource-type="${e(a.resource_type)}" data-resource-id="${e(a.resource_id||"")}" data-result="${e(a.result)}" data-request-id="${e(a.request_id)}"`)}</td></tr>`),"No matching audit events","Recorded actions will appear here. Audit records cannot be edited or deleted.")+pager(data));
 }
 
 export function workspaceUserRow(user,{canManage=false,currentUserId=null}={}){
@@ -514,7 +519,7 @@ async function reportForm(assessmentId="") {
   openForm({title:"Generate assessment report",description:"Create a frozen report snapshot. A distinct administrator must approve it before PDF or JSON export.",fields,values:{assessment_id:assessmentId||assessments[0].id},submit:"Create report for review",success:"Report snapshot created for independent review.",destination:r=>`#reports/${r.id}`,build:data=>{const body=valuesFromFields(fields,data);modalSpec.path=`/assessments/${body.assessment_id}/reports`;delete body.assessment_id;return body;}});
 }
 async function protectedDownload(path,filename,button) {
-  if(button)button.disabled=true;try{const blob=await api(path,{blob:true});if(!me)return;const url=URL.createObjectURL(blob),anchor=document.createElement("a");anchor.href=url;anchor.download=filename;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast("Protected download started.");}catch(error){if(me)toast(errorText(error));}finally{if(button)button.disabled=false;}
+  if(button)button.disabled=true;try{const blob=await api(path,{blob:true});if(!me)return false;const url=URL.createObjectURL(blob),anchor=document.createElement("a");anchor.href=url;anchor.download=filename;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast("Protected download started.");return true;}catch(error){if(me)toast(errorText(error));return false;}finally{if(button)button.disabled=false;}
 }
 const section=(label)=>({type:"section",label});
 const textField=(name,label,extra={})=>({name,label,type:"text",maxlength:255,nullable:true,...extra});
@@ -699,6 +704,22 @@ async function handleAction(button){
   if(action==="open-record-page"){const page=button.dataset.page;if(!recordViewPaths[page]||!/^[a-f0-9-]{36}$/i.test(id||"")){toast("This record cannot be opened from the current list.");return;}closeModal(true);location.hash=`#${page}/${id}`;return;}
   if(action==="logout"){if(dirty()&&!confirm("Discard unsaved edits and sign out of the workspace?"))return;try{await api("/auth/logout",{method:"POST"});}catch(error){if(error.status!==401){toast(errorText(error));return;}}disconnect();return;}
   if(action==="refresh"){await navigate({keepTab:true});return;}
+  if(action==="export-audit"){
+    if(!admin()){toast("Administrator access is required to export audit events.");return;}
+    const form=document.getElementById("filter-form");
+    let selected=filters.audit||{};
+    if(form){
+      const values=Object.fromEntries(new FormData(form));
+      if(values.date_from&&values.date_to&&values.date_from>values.date_to){toast("From date must be on or before the Through date.");return;}
+      selected=Object.fromEntries(Object.entries(values).filter(([,value])=>String(value).trim()!==""));
+      filters.audit={...selected,offset:0};
+      clearTimeout(filterTimer);filterTimer=null;
+    }
+    let path;try{path=auditExportPath(selected,button.dataset.format);}catch(error){toast(error.message);return;}
+    const format=button.dataset.format,downloaded=await protectedDownload(path,`DroidShield-audit-events-${new Date().toISOString().slice(0,10)}.${format}`,button);
+    if(downloaded&&me)await navigate({keepTab:true});
+    return;
+  }
   if(action==="edit-workspace-settings"){if(!admin()){toast("Administrator access is required to edit workspace settings.");return;}if(!currentWorkspaceSettings){toast("Reload workspace settings before editing them.");return;}workspaceSettingsForm(currentWorkspaceSettings);return;}
   if(action==="new-user"){userForm();return;}
   if(action==="edit-user"){if(!admin()){toast("Administrator access is required to manage workspace accounts.");return;}const user=currentUsers.find(item=>item.id===id);if(!user){toast("This account is no longer in the current list. Refresh and try again.");return;}userForm(user);return;}

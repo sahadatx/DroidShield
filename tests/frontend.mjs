@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { ApiError, analysisCoverageSections, apiEvidenceSections, artifactFormat, assessmentWorkflowLabel, coverageMatrixMarkup, comparisonArtifactMarkup, createApi, dynamicScenarioOptions, dynamicDeviceLabel, endpointsFromForm, escapeHTML, exactHTTPSURL, formatBytes, kpiCards, makeQuery, metricCount, overviewFilterPanel, pager, parseRoute, reportSnapshotMarkup, runtimeEvidenceSections, splitTargets, valuesFromFields, viewAction, workspaceSettingsMarkup, workspaceSettingsPayload, workspaceSecretStatusMarkup, workspaceUserRow } from "../backend/droidshield/web/app.js";
+import { ApiError, analysisCoverageSections, apiEvidenceSections, artifactFormat, assessmentWorkflowLabel, auditExportPath, coverageMatrixMarkup, comparisonArtifactMarkup, createApi, dynamicScenarioOptions, dynamicDeviceLabel, endpointsFromForm, escapeHTML, exactHTTPSURL, formatBytes, kpiCards, makeQuery, metricCount, overviewFilterPanel, pager, parseRoute, reportSnapshotMarkup, runtimeEvidenceSections, splitTargets, valuesFromFields, viewAction, workspaceSettingsMarkup, workspaceSettingsPayload, workspaceSecretStatusMarkup, workspaceUserRow } from "../backend/droidshield/web/app.js";
 
 test("untrusted markup is encoded in text and attribute contexts", () => {
   assert.equal(escapeHTML('<img src=x onerror="alert(1)"> & \'x\''), "&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; &#39;x&#39;");
@@ -108,6 +108,31 @@ test("query filters preserve zero offsets and safely encode user search terms", 
   assert.equal(makeQuery({q:"App & Client",offset:0,status:"",project_id:null}),"?q=App+%26+Client&offset=0");
   assert.deepEqual(splitTargets("package:com.test.app\r\n \r\nhttps://example.com/"),["package:com.test.app","https://example.com/"]);
   assert.equal(formatBytes(0),"0 B"); assert.equal(formatBytes(1048576),"1.0 MB");
+});
+
+test("audit export preserves the current supported filters and excludes pagination or unknown fields", () => {
+  const path=auditExportPath({action:"  assessment.created&format=json ",resource_type:" project ",result:"failure",actor_id:"actor-uuid",resource_id:"resource-uuid",date_from:"2026-11-01",date_to:"2026-11-04",offset:75,project_id:"not-supported",secret:"never-export"},"csv");
+  assert.equal(path,"/audit-events/export?format=csv&action=assessment.created%26format%3Djson&resource_type=project&result=failure&actor_id=actor-uuid&resource_id=resource-uuid&date_from=2026-11-01&date_to=2026-11-04");
+  const params=new URLSearchParams(path.split("?")[1]);
+  assert.equal(params.get("action"),"assessment.created&format=json");
+  assert.equal(params.get("format"),"csv");
+  assert.equal(params.has("offset"),false);
+  assert.equal(params.has("project_id"),false);
+  assert.equal(params.has("secret"),false);
+  assert.throws(()=>auditExportPath({},"xml"),/Choose CSV or JSON/);
+});
+
+test("audit page offers both filtered exports and explains the export bounds", async () => {
+  const source=await readFile(new URL("../backend/droidshield/web/app.js",import.meta.url),"utf8");
+  const page=source.slice(source.indexOf("async function auditPage"),source.indexOf("export function workspaceUserRow"));
+  assert.match(page,/btn\("export-audit","Export CSV"[\s\S]*?data-format="csv"/);
+  assert.match(page,/btn\("export-audit","Export JSON"[\s\S]*?data-format="json"/);
+  assert.match(page,/Action \(exact\)/);
+  assert.match(page,/Resource type \(exact\)/);
+  assert.match(page,/From date \(UTC\)/);
+  assert.match(page,/Through date \(UTC\)/);
+  assert.match(page,/10,000 records \/ 10 MiB/);
+  assert.match(source,/if\(action==="export-audit"\)[\s\S]*?if\(!admin\(\)\)/);
 });
 
 test("shared pager follows the APISentinel range and previous/next page layout", () => {
@@ -288,7 +313,7 @@ test("distributed browser assets do not persist tokens or load executable third-
   assert.match(js,/name="email"/);assert.match(js,/name="password"/);assert.match(js,/\/auth\/session/);
   assert.doesNotMatch(js,/name="token"|Workspace access token|Authorization:\s*`Bearer/);
   assert.match(js,/credentials:"same-origin"/);
-  assert.match(html,/<script type="module" src="\/assets\/app\.js\?v=0\.5\.18"><\/script>/);
+  assert.match(html,/<script type="module" src="\/assets\/app\.js\?v=0\.5\.19"><\/script>/);
   assert.match(js,/<caption class="visually-hidden">\$\{e\(columns\[0\]\)\} records<\/caption>/);
   assert.doesNotMatch(js,/Portfolio preview · synthetic records\./);
   assert.match(css,/dialog\.record-drawer\s*\{/);
