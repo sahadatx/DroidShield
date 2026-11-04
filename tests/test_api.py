@@ -1685,6 +1685,60 @@ def test_overview_filters_scope_counts_and_recent_assessments(api):
     expect(api.get("/overview", role="viewer", params={"project_id": other_project["id"]}), 404)
 
 
+def test_client_scoped_detail_views_filter_assessments_findings_and_activity(api):
+    client = make_client(api, name="Client detail scope")
+    other_client = make_client(api, name="Other detail scope")
+    project = make_project(api, client, name="Client app")
+    other_project = make_project(api, other_client, name="Other app")
+    assessment = make_assessment(api, project, name="Client assessment")
+    other_assessment = make_assessment(api, other_project, name="Other assessment")
+    with Session(api.engine) as session:
+        for linked_project, linked_assessment, title in (
+            (project, assessment, "Client finding"),
+            (other_project, other_assessment, "Other finding"),
+        ):
+            session.add(
+                Finding(
+                    workspace_id=api.workspaces["main"],
+                    project_id=UUID(linked_project["id"]),
+                    assessment_id=UUID(linked_assessment["id"]),
+                    created_by=api.users["admin"],
+                    title=title,
+                    description="Scoped finding detail",
+                    affected_component="Mobile API",
+                    category="authorization",
+                    severity="high",
+                    verification_status="confirmed",
+                    remediation_status="open",
+                    reproduction_steps="Use the authorized test account.",
+                    impact="Scoped test impact.",
+                    remediation="Apply the documented fix.",
+                )
+            )
+        session.commit()
+
+    project_page = expect(api.get("/projects", params={"client_id": client["id"]}))
+    assessment_page = expect(api.get("/assessments", params={"client_id": client["id"]}))
+    finding_page = expect(api.get("/findings", params={"client_id": client["id"]}))
+    overview = expect(api.get("/overview", params={"client_id": client["id"]}))
+    assert {record["id"] for record in project_page["items"]} == {project["id"]}
+    assert {record["id"] for record in assessment_page["items"]} == {assessment["id"]}
+    assert {record["title"] for record in finding_page["items"]} == {"Client finding"}
+    assert overview["total_clients"] == overview["total_projects"] == 1
+    assert overview["total_assessments"] == overview["total_findings"] == 1
+    assert overview["open_findings"] == 1
+    visible_resources = {project["id"], assessment["id"], client["id"]}
+    assert all(
+        str(event["resource_id"]) in visible_resources
+        for event in overview["recent_activity"]
+        if event["resource_id"] is not None
+    )
+
+    expect(api.get("/overview", role="other_admin", params={"client_id": client["id"]}), 404)
+    expect(api.get("/assessments", role="other_admin", params={"client_id": client["id"]}), 404)
+    expect(api.get("/findings", role="other_admin", params={"client_id": client["id"]}), 404)
+
+
 def test_list_pagination_and_literal_search_have_stable_totals(api):
     clients = [make_client(api, name=name) for name in ("alpha_one", "alphaXone", "beta")]
     first = expect(api.get("/clients", params={"limit": 2, "offset": 0}))

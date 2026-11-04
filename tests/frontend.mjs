@@ -1,7 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { ApiError, analysisCoverageSections, apiEvidenceSections, artifactFormat, assessmentWorkflowLabel, auditExportPath, coverageMatrixMarkup, comparisonArtifactMarkup, createApi, dynamicScenarioOptions, dynamicDeviceLabel, endpointsFromForm, escapeHTML, exactHTTPSURL, formatBytes, kpiCards, makeQuery, metricCount, overviewActivityMarkup, overviewPendingActionsMarkup, overviewFilterPanel, pager, parseRoute, reportSnapshotMarkup, riskTrendMarkup, runtimeEvidenceSections, splitTargets, valuesFromFields, viewAction, workspaceSettingsMarkup, workspaceSettingsPayload, workspaceSecretStatusMarkup, workspaceUserRow } from "../backend/droidshield/web/app.js";
+import { ApiError, analysisCoverageSections, apiEvidenceSections, artifactFormat, assessmentWorkflowLabel, auditExportPath, coverageMatrixMarkup, comparisonArtifactMarkup, createApi, detailTabsMarkup, dynamicScenarioOptions, dynamicDeviceLabel, endpointsFromForm, escapeHTML, exactHTTPSURL, formatBytes, kpiCards, makeQuery, metricCount, overviewActivityMarkup, overviewPendingActionsMarkup, overviewFilterPanel, pager, parseRoute, reportSnapshotMarkup, riskTrendMarkup, runtimeEvidenceSections, splitTargets, valuesFromFields, viewAction, workspaceSettingsMarkup, workspaceSettingsPayload, workspaceSecretStatusMarkup, workspaceUserRow } from "../backend/droidshield/web/app.js";
+
+test("client and project detail tabs expose accessible selected-tab relationships",()=>{
+  const tabs=[["overview","Overview"],["findings","Findings <script>"]];
+  const client=detailTabsMarkup("client",tabs,"findings");
+  assert.match(client,/role="tablist" aria-label="Client details"/);
+  assert.match(client,/id="client-tab-findings" role="tab" aria-selected="true" aria-controls="client-panel" tabindex="0"/);
+  assert.match(client,/Findings &lt;script&gt;/);
+  assert.match(client,/aria-selected="false" aria-controls="client-panel" tabindex="-1"/);
+  const project=detailTabsMarkup("project",[["reports","Reports"]],"reports");
+  assert.match(project,/aria-label="Project details"/);
+  assert.match(project,/id="project-tab-reports"/);
+  assert.doesNotMatch(detailTabsMarkup('<img>',[["activity","Activity"]],"activity"),/<img/);
+});
 
 test("untrusted markup is encoded in text and attribute contexts", () => {
   assert.equal(escapeHTML('<img src=x onerror="alert(1)"> & \'x\''), "&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; &#39;x&#39;");

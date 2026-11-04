@@ -87,11 +87,13 @@ def new_report(api, assessment, role="analyst", **changes):
 def test_report_library_filters_title_project_assessment_status_and_template(reporting):
     project, assessment = completed(reporting)
     report = new_report(reporting, assessment, template="technical")
+    other_client = make_project(reporting, role="analyst")["client_id"]
     page = expect(
         reporting.get(
             "/reports",
             params={
                 "q": "Client mobile",
+                "client_id": project["client_id"],
                 "project_id": project["id"],
                 "assessment_id": assessment["id"],
                 "status": "awaiting_review",
@@ -101,6 +103,11 @@ def test_report_library_filters_title_project_assessment_status_and_template(rep
     )
     assert page["total"] == 1
     assert page["items"][0]["id"] == report["id"]
+    assert expect(reporting.get("/reports", params={"client_id": other_client}))["total"] == 0
+    expect(
+        reporting.get("/reports", role="other_admin", params={"client_id": project["client_id"]}),
+        404,
+    )
     expect(reporting.get("/reports", params={"template": "unknown"}), 422)
 
 

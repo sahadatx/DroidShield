@@ -14,7 +14,7 @@ from droidshield import services
 from droidshield.api_common import Ctx, Idem, Limit, Offset, page
 from droidshield.cvss_scoring import score_cvss
 from droidshield.errors import DomainError
-from droidshield.models import Report
+from droidshield.models import Project, Report
 from droidshield.report_models import ReportExport
 from droidshield.schemas import Page
 from droidshield.storage import StorageError
@@ -35,12 +35,15 @@ def list_reports(
     ctx: Ctx,
     limit: Limit = 25,
     offset: Offset = 0,
+    client_id: UUID | None = None,
     project_id: UUID | None = None,
     assessment_id: UUID | None = None,
     status: Literal["draft", "awaiting_review", "approved", "exported"] | None = None,
     template: Literal["executive", "technical", "combined"] | None = None,
     q: Annotated[str | None, Query(max_length=200)] = None,
 ):
+    if client_id:
+        services.client(ctx, client_id)
     query = select(Report).where(
         Report.workspace_id == ctx.workspace_id,
         Report.project_id.in_(services.visible_projects(ctx)),
@@ -53,6 +56,16 @@ def list_reports(
     ):
         if value is not None:
             query = query.where(field == value)
+    if client_id:
+        query = query.where(
+            Report.project_id.in_(
+                select(Project.id).where(
+                    Project.workspace_id == ctx.workspace_id,
+                    Project.client_id == client_id,
+                    Project.id.in_(services.visible_projects(ctx)),
+                )
+            )
+        )
     if q:
         query = query.where(Report.title.icontains(q, autoescape=True))
     return page(

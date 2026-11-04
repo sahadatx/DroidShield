@@ -362,6 +362,7 @@ def findings(
     offset: Offset = 0,
     q: Annotated[str | None, Query(max_length=200)] = None,
     project_id: UUID | None = None,
+    client_id: UUID | None = None,
     assessment_id: UUID | None = None,
     severity: Literal["critical", "high", "medium", "low", "info"] | None = None,
     verification_status: Literal["unreviewed", "confirmed", "false_positive", "needs_more_evidence"]
@@ -369,6 +370,8 @@ def findings(
     remediation_status: Literal["open", "in_progress", "fixed", "accepted_risk", "retest_required"]
     | None = None,
 ):
+    if client_id:
+        svc.client(ctx, client_id)
     query = select(Finding).where(
         Finding.workspace_id == ctx.workspace_id,
         Finding.project_id.in_(svc.visible_projects(ctx)),
@@ -382,6 +385,16 @@ def findings(
     ):
         if value is not None:
             query = query.where(field == value)
+    if client_id:
+        query = query.where(
+            Finding.project_id.in_(
+                select(Project.id).where(
+                    Project.workspace_id == ctx.workspace_id,
+                    Project.client_id == client_id,
+                    Project.id.in_(svc.visible_projects(ctx)),
+                )
+            )
+        )
     if q:
         query = query.where(
             or_(
@@ -539,6 +552,7 @@ def assessments(
     limit: Limit = 25,
     offset: Offset = 0,
     project_id: UUID | None = None,
+    client_id: UUID | None = None,
     status: s.AssessmentStatus | None = None,
     assessment_type: s.AssessmentType | None = None,
     q: Annotated[str | None, Query(max_length=200)] = None,
@@ -547,12 +561,24 @@ def assessments(
 ):
     if date_from and date_to and date_from > date_to:
         raise DomainError(422, "validation_error", "Start date must be on or before end date")
+    if client_id:
+        svc.client(ctx, client_id)
     query = select(Assessment).where(
         Assessment.project_id.in_(svc.visible_projects(ctx)),
         Assessment.workspace_id == ctx.workspace_id,
     )
     if project_id:
         query = query.where(Assessment.project_id == project_id)
+    if client_id:
+        query = query.where(
+            Assessment.project_id.in_(
+                select(Project.id).where(
+                    Project.workspace_id == ctx.workspace_id,
+                    Project.client_id == client_id,
+                    Project.id.in_(svc.visible_projects(ctx)),
+                )
+            )
+        )
     if status:
         query = query.where(Assessment.status == status)
     if assessment_type:
@@ -644,6 +670,7 @@ def cancel_assessment(assessment_id: UUID, ctx: Ctx, data: s.AssessmentCancel, k
 def overview(
     ctx: Ctx,
     project_id: UUID | None = None,
+    client_id: UUID | None = None,
     assessment_type: s.AssessmentType | None = None,
     assessment_status: s.AssessmentStatus | None = None,
     date_from: date | None = None,
@@ -654,6 +681,8 @@ def overview(
         raise DomainError(422, "validation_error", "Start date must be on or before end date")
 
     projects = svc.visible_projects(ctx)
+    if client_id:
+        svc.client(ctx, client_id)
     if project_id and not ctx.session.scalar(
         select(Project.id).where(
             Project.workspace_id == ctx.workspace_id,
@@ -669,6 +698,8 @@ def overview(
     ]
     if project_id:
         project_scope.append(Project.id == project_id)
+    if client_id:
+        project_scope.append(Project.client_id == client_id)
     if date_from:
         project_scope.append(Project.created_at >= datetime.combine(date_from, time.min, UTC))
     if date_to:
@@ -711,7 +742,7 @@ def overview(
         return dict(rows)
 
     client_query = svc.client_query(ctx)
-    if project_id or assessment_type or assessment_status:
+    if project_id or client_id or assessment_type or assessment_status:
         client_query = client_query.where(
             Client.id.in_(select(Project.client_id).where(Project.id.in_(count_project_ids)))
         )
@@ -766,6 +797,8 @@ def overview(
     ]
     if project_id:
         trend_project_scope.append(Project.id == project_id)
+    if client_id:
+        trend_project_scope.append(Project.client_id == client_id)
     trend_project_ids = select(Project.id).where(*trend_project_scope)
     trend_assessment_scope = [
         Assessment.workspace_id == ctx.workspace_id,
