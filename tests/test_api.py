@@ -29,6 +29,7 @@ from droidshield.models import (
     Client,
     Finding,
     LoginRateLimitEntry,
+    Project,
     ProjectAccess,
     Report,
     Retest,
@@ -1380,6 +1381,132 @@ def test_overview_counts_database_records_and_respects_project_visibility(api):
     assert restricted["total_findings"] == 3
     assert restricted["total_clients"] == 1
     assert restricted["severity"]["medium"] == 0
+
+
+def test_overview_reports_rolling_risk_trend_and_explicitly_overdue_retests(api):
+    project = make_project(api, name="Trend scope project")
+    hidden_project = make_project(api, name="Trend hidden project")
+    assessment = make_assessment(api, project)
+    hidden_assessment = make_assessment(api, hidden_project)
+    today = datetime.now(UTC).date()
+    now = datetime.now(UTC)
+
+    def add_finding(
+        session,
+        assessment_row,
+        project_row,
+        title,
+        severity,
+        verification,
+        status,
+        created,
+        due=None,
+    ):
+        session.add(
+            Finding(
+                workspace_id=api.workspaces["main"],
+                project_id=project_row.id,
+                assessment_id=assessment_row.id,
+                created_by=api.users["analyst"],
+                title=title,
+                description="A sufficiently detailed test finding description.",
+                affected_component="Authorized mobile application",
+                category="authorization",
+                severity=severity,
+                verification_status=verification,
+                remediation_status=status,
+                retest_due_at=due,
+                reproduction_steps="Use the authorized test case to reproduce this condition.",
+                impact="A protected resource may be exposed to an unauthorized test account.",
+                remediation="Enforce the required object-level authorization check.",
+                created_at=created,
+                updated_at=created,
+            )
+        )
+
+    with Session(api.engine) as session:
+        visible_assessment = session.get(Assessment, UUID(assessment["id"]))
+        visible_project = session.get(Project, UUID(project["id"]))
+        add_finding(
+            session,
+            visible_assessment,
+            visible_project,
+            "Overdue confirmed finding",
+            "high",
+            "confirmed",
+            "retest_required",
+            now - timedelta(days=2),
+            now - timedelta(hours=1),
+        )
+        add_finding(
+            session,
+            visible_assessment,
+            visible_project,
+            "No due date is not overdue",
+            "medium",
+            "confirmed",
+            "retest_required",
+            now - timedelta(days=60),
+        )
+        add_finding(
+            session,
+            visible_assessment,
+            visible_project,
+            "Unreviewed candidate",
+            "critical",
+            "unreviewed",
+            "retest_required",
+            now - timedelta(days=1),
+            now - timedelta(hours=1),
+        )
+        add_finding(
+            session,
+            visible_assessment,
+            visible_project,
+            "Fixed finding",
+            "critical",
+            "confirmed",
+            "fixed",
+            now - timedelta(days=1),
+        )
+        add_finding(
+            session,
+            session.get(Assessment, UUID(hidden_assessment["id"])),
+            session.get(Project, UUID(hidden_project["id"])),
+            "Hidden project finding",
+            "critical",
+            "confirmed",
+            "retest_required",
+            now - timedelta(days=1),
+            now - timedelta(hours=1),
+        )
+        session.commit()
+
+    overview = expect(api.get("/overview", params={"project_id": project["id"], "trend_days": 7}))
+    assert overview["overdue_retests"] == 1
+    assert len(overview["risk_trend"]) == 7
+    assert overview["risk_trend"][0]["date"] == (today - timedelta(days=6)).isoformat()
+    assert overview["risk_trend"][-1]["date"] == today.isoformat()
+    past_due_day = next(
+        point
+        for point in overview["risk_trend"]
+        if point["date"] == (today - timedelta(days=2)).isoformat()
+    )
+    assert past_due_day["high"] == past_due_day["total"] == 1
+    assert all(point["critical"] == 0 for point in overview["risk_trend"])
+
+    grant(api, project, "viewer")
+    restricted = expect(
+        api.get(
+            "/overview",
+            role="viewer",
+            params={"project_id": project["id"], "trend_days": 7},
+        )
+    )
+    assert restricted["overdue_retests"] == 1
+    assert restricted["risk_trend"] == overview["risk_trend"]
+    expect(api.get("/overview", params={"trend_days": 6}), 422)
+    expect(api.get("/overview", params={"trend_days": 91}), 422)
 
 
 def test_overview_summarizes_scoped_activity_and_persisted_review_queues(api):

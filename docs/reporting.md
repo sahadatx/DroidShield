@@ -69,7 +69,9 @@ Pass, Fail, N/A and Blocked records rather than inferring coverage from scanner
 success. This starter library is not an exhaustive implementation of every MASVS
 control or MASTG test. Framework IDs, versions and URLs are frozen with the report.
 The remediation roadmap orders unfixed findings by assessed severity; owners and
-due dates require client agreement, so the report invents no deadlines.
+due dates require client agreement, so the report invents no deadlines. The
+workspace Overview counts an overdue retest only when an analyst records that
+agreed date on a finding whose remediation status is `retest_required`.
 
 Only approved Retests are included. Mobile retests retain the new immutable APK,
 AAB or IPA hash/version; API-only retests retain distinct original/new release

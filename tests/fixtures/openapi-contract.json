@@ -2931,6 +2931,17 @@
           "reproduction_steps": {
             "type": "string"
           },
+          "retest_due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "revision": {
             "type": "integer"
           },
@@ -2965,6 +2976,7 @@
           "severity",
           "verification_status",
           "remediation_status",
+          "retest_due_at",
           "created_at",
           "revision",
           "created_by",
@@ -3055,6 +3067,17 @@
             ],
             "type": "string"
           },
+          "retest_due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "severity": {
             "enum": [
               "critical",
@@ -3086,6 +3109,7 @@
           "severity",
           "verification_status",
           "remediation_status",
+          "retest_due_at",
           "created_at"
         ],
         "type": "object"
@@ -3230,6 +3254,17 @@
               {
                 "maxLength": 20000,
                 "minLength": 10,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retest_due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
                 "type": "string"
               },
               {
@@ -4083,6 +4118,9 @@
           "open_findings": {
             "type": "integer"
           },
+          "overdue_retests": {
+            "type": "integer"
+          },
           "pending_actions": {
             "$ref": "#/components/schemas/OverviewPendingActionsOut"
           },
@@ -4121,6 +4159,12 @@
           },
           "retests_rejected": {
             "type": "integer"
+          },
+          "risk_trend": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewRiskTrendOut"
+            },
+            "type": "array"
           },
           "severity": {
             "additionalProperties": {
@@ -4216,7 +4260,9 @@
           "api_executions_completed",
           "api_executions_failed",
           "recent_activity",
-          "pending_actions"
+          "pending_actions",
+          "risk_trend",
+          "overdue_retests"
         ],
         "type": "object"
       },
@@ -4240,6 +4286,43 @@
           "assessment_reviews",
           "report_reviews",
           "retest_reviews",
+          "total"
+        ],
+        "type": "object"
+      },
+      "OverviewRiskTrendOut": {
+        "additionalProperties": false,
+        "properties": {
+          "critical": {
+            "type": "integer"
+          },
+          "date": {
+            "format": "date",
+            "type": "string"
+          },
+          "high": {
+            "type": "integer"
+          },
+          "info": {
+            "type": "integer"
+          },
+          "low": {
+            "type": "integer"
+          },
+          "medium": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info",
           "total"
         ],
         "type": "object"
@@ -10162,6 +10245,17 @@
                   "type": "null"
                 }
               ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "trend_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 90,
+              "minimum": 7,
+              "type": "integer"
             }
           }
         ],

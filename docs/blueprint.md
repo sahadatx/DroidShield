@@ -49,7 +49,7 @@ Layout: KPI row; risk trend and severity distribution; recent assessments, lates
 | Activity | Recent persisted resource events within the actor's accessible project scope; event type, actor ID and timestamp |
 | Pending actions | Database-derived assessment, report and retest review queues |
 
-Filters: date range, project and assessment status. Actions: New Project, New Assessment, View Findings and Generate Report, subject to role and prerequisites. Backend requirement: authorized aggregates and recent-resource queries, with a consistent definition of open and overdue. `GET /api/v1/overview` provides persisted project/assessment counts, queued/running count, confirmed non-fixed finding counts by severity, assessment/report/retest review queue totals and up to 10 sanitized recent events from accessible resources; the browser renders the activity and review queues from that response. Risk trends and overdue-retest summaries remain planned.
+Filters: date range, project and assessment status. Actions: New Project, New Assessment, View Findings and Generate Report, subject to role and prerequisites. `GET /api/v1/overview` provides persisted project/assessment counts, queued/running count, confirmed non-fixed finding counts by severity, assessment/report/retest review queue totals, up to 10 sanitized recent events, a bounded rolling risk trend and a count of findings past an explicitly recorded client-agreed retest date. The trend groups current confirmed non-fixed findings by creation date and is not a historical status snapshot. Missing deadlines are never inferred. See the [API contract](api-contract.md) for filter scope and UTC window rules.
 
 ### 02 — Clients
 

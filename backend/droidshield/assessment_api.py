@@ -4,12 +4,12 @@ import csv
 import io
 import json
 import re
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response
-from sqlalchemy import func, or_, select
+from sqlalchemy import Date, cast, func, or_, select
 
 from droidshield import schemas as s
 from droidshield import services as svc
@@ -648,6 +648,7 @@ def overview(
     assessment_status: s.AssessmentStatus | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    trend_days: Annotated[int, Query(ge=7, le=90)] = 30,
 ):
     if date_from and date_to and date_from > date_to:
         raise DomainError(422, "validation_error", "Start date must be on or before end date")
@@ -754,6 +755,72 @@ def overview(
     for level, verification, remediation, amount in finding_rows:
         if verification == "confirmed" and remediation != "fixed":
             severity[level] += amount
+
+    trend_end = datetime.now(UTC).date()
+    trend_start = trend_end - timedelta(days=trend_days - 1)
+    trend_window_start = datetime.combine(trend_start, time.min, UTC)
+    trend_window_end = datetime.combine(trend_end + timedelta(days=1), time.min, UTC)
+    trend_project_scope = [
+        Project.workspace_id == ctx.workspace_id,
+        Project.id.in_(projects),
+    ]
+    if project_id:
+        trend_project_scope.append(Project.id == project_id)
+    trend_project_ids = select(Project.id).where(*trend_project_scope)
+    trend_assessment_scope = [
+        Assessment.workspace_id == ctx.workspace_id,
+        Assessment.project_id.in_(trend_project_ids),
+    ]
+    if assessment_type:
+        trend_assessment_scope.append(Assessment.assessment_type == assessment_type)
+    if assessment_status:
+        trend_assessment_scope.append(Assessment.status == assessment_status)
+    if ctx.session.bind.dialect.name == "postgresql":
+        trend_day = cast(func.timezone("UTC", Finding.created_at), Date)
+    else:
+        trend_day = func.date(Finding.created_at)
+    trend_rows = ctx.session.execute(
+        select(trend_day, Finding.severity, func.count())
+        .where(
+            Finding.workspace_id == ctx.workspace_id,
+            Finding.project_id.in_(trend_project_ids),
+            Finding.assessment_id.in_(select(Assessment.id).where(*trend_assessment_scope)),
+            Finding.verification_status == "confirmed",
+            Finding.remediation_status != "fixed",
+            Finding.created_at >= trend_window_start,
+            Finding.created_at < trend_window_end,
+        )
+        .group_by(trend_day, Finding.severity)
+    ).all()
+    trend_counts = {
+        trend_start + timedelta(days=offset): {level: 0 for level in severity}
+        for offset in range(trend_days)
+    }
+    for day, level, amount in trend_rows:
+        if isinstance(day, str):
+            day = date.fromisoformat(day)
+        trend_counts[day][level] = amount
+    risk_trend = [
+        {"date": day, **counts, "total": sum(counts.values())}
+        for day, counts in trend_counts.items()
+    ]
+    overdue_retests = (
+        ctx.session.scalar(
+            select(func.count())
+            .select_from(Finding)
+            .where(
+                Finding.workspace_id == ctx.workspace_id,
+                Finding.project_id.in_(project_ids),
+                Finding.assessment_id.in_(assessment_ids),
+                Finding.verification_status == "confirmed",
+                Finding.remediation_status == "retest_required",
+                Finding.retest_due_at.is_not(None),
+                Finding.retest_due_at < datetime.now(UTC),
+                *created_between(Finding),
+            )
+        )
+        or 0
+    )
     report_status = grouped_counts(
         Report,
         Report.status,
@@ -861,6 +928,8 @@ def overview(
             "retest_reviews": pending_retest_reviews,
             "total": (pending_assessment_reviews + pending_report_reviews + pending_retest_reviews),
         },
+        "risk_trend": risk_trend,
+        "overdue_retests": overdue_retests,
     }
 
 

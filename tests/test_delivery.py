@@ -601,6 +601,48 @@ def test_scope_roles_stale_revisions_and_self_review(delivery_api):
     )
 
 
+def test_retest_deadline_is_explicit_and_does_not_unreview_finding_content(delivery_api):
+    api = delivery_api
+    _, _, assessment, _ = manual(api)
+    evidence = add_evidence(api, assessment)
+    issue = confirm(api, add_finding(api, assessment, [evidence["id"]]))
+
+    with Session(api.engine) as session:
+        session.get(Finding, UUID(issue["id"])).remediation_status = "retest_required"
+        session.commit()
+    issue = expect(api.get(f"/findings/{issue['id']}"))
+    past_due = datetime.now(UTC) - timedelta(hours=1)
+    scheduled = expect(
+        api.patch(
+            f"/findings/{issue['id']}",
+            {"revision": issue["revision"], "retest_due_at": past_due.isoformat()},
+            role="analyst",
+        )
+    )
+    assert scheduled["verification_status"] == "confirmed"
+    assert scheduled["remediation_status"] == "retest_required"
+    assert datetime.fromisoformat(scheduled["retest_due_at"]).astimezone(UTC) == past_due
+
+    another = add_finding(api, assessment)
+    expect(
+        api.patch(
+            f"/findings/{another['id']}",
+            {"revision": another["revision"], "retest_due_at": past_due.isoformat()},
+            role="analyst",
+        ),
+        422,
+    )
+
+    cleared = expect(
+        api.patch(
+            f"/findings/{scheduled['id']}",
+            {"revision": scheduled["revision"], "remediation_status": "open"},
+            role="analyst",
+        )
+    )
+    assert cleared["retest_due_at"] is None
+
+
 def test_cross_assessment_evidence_cannot_confirm_or_populate_coverage(delivery_api):
     api = delivery_api
     _, _, first, _ = manual(api)

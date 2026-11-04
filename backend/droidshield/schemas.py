@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Generic, Literal, TypeVar
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID
@@ -216,6 +216,18 @@ class OverviewPendingActionsOut(ResponseModel):
     total: int
 
 
+class OverviewRiskTrendOut(ResponseModel):
+    """Current confirmed, non-fixed findings grouped by their UTC creation day."""
+
+    date: date
+    critical: int
+    high: int
+    medium: int
+    low: int
+    info: int
+    total: int
+
+
 class OverviewOut(ResponseModel):
     """Workspace and accessible-project counts used by dashboard cards."""
 
@@ -264,6 +276,8 @@ class OverviewOut(ResponseModel):
     api_executions_failed: int
     recent_activity: list[OverviewActivityOut]
     pending_actions: OverviewPendingActionsOut
+    risk_trend: list[OverviewRiskTrendOut]
+    overdue_retests: int
 
 
 class AuditEventOut(ResponseModel):
@@ -779,6 +793,7 @@ class FindingSummaryOut(ResponseModel):
     severity: Literal["critical", "high", "medium", "low", "info"]
     verification_status: Literal["unreviewed", "confirmed", "false_positive", "needs_more_evidence"]
     remediation_status: Literal["open", "in_progress", "fixed", "accepted_risk", "retest_required"]
+    retest_due_at: datetime | None
     created_at: datetime
 
 

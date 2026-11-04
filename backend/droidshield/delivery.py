@@ -533,6 +533,22 @@ def update_finding(ctx, finding_id, data):
     _editable(assessment)
     svc.check_revision(record, data.revision)
     changes = data.model_dump(exclude_unset=True, exclude={"revision", "evidence_ids"})
+    resulting_status = changes.get("remediation_status", record.remediation_status)
+    resulting_due_at = changes.get("retest_due_at", record.retest_due_at)
+    if "remediation_status" in changes and resulting_status != "retest_required":
+        if changes.get("retest_due_at") is not None:
+            raise DomainError(
+                422,
+                "validation_error",
+                "A retest due date can only be set while the finding requires a retest",
+            )
+        changes["retest_due_at"] = None
+    elif resulting_due_at is not None and resulting_status != "retest_required":
+        raise DomainError(
+            422,
+            "validation_error",
+            "A retest due date can only be set while the finding requires a retest",
+        )
     for value in changes.values():
         if isinstance(value, str):
             _require_sanitized(value)
@@ -546,17 +562,21 @@ def update_finding(ctx, finding_id, data):
         }
     for name, value in changes.items():
         setattr(record, name, value)
-    record.verification_status = "unreviewed"
-    record.assigned_reviewer = None
-    contributors = set(record.evidence_provenance.get("contributors", []))
-    contributors.update({str(record.created_by), str(ctx.user.id)})
-    if record.evidence_provenance.get("last_edited_by"):
-        contributors.add(record.evidence_provenance["last_edited_by"])
-    record.evidence_provenance = {
-        **record.evidence_provenance,
-        "last_edited_by": str(ctx.user.id),
-        "contributors": sorted(contributors),
-    }
+    finding_content_changed = (
+        bool(set(changes) - {"retest_due_at"}) or data.evidence_ids is not None
+    )
+    if finding_content_changed:
+        record.verification_status = "unreviewed"
+        record.assigned_reviewer = None
+        contributors = set(record.evidence_provenance.get("contributors", []))
+        contributors.update({str(record.created_by), str(ctx.user.id)})
+        if record.evidence_provenance.get("last_edited_by"):
+            contributors.add(record.evidence_provenance["last_edited_by"])
+        record.evidence_provenance = {
+            **record.evidence_provenance,
+            "last_edited_by": str(ctx.user.id),
+            "contributors": sorted(contributors),
+        }
     ctx.session.flush()
     svc.audit(ctx, "finding.updated", "finding", record.id)
     return record
@@ -850,8 +870,10 @@ def review_retest(ctx, retest_id, data, settings):
             get_evidence_content(settings, item)
         if record.result == "pass":
             issue.remediation_status = "fixed"
+            issue.retest_due_at = None
         elif record.result == "fail":
             issue.remediation_status = "open"
+            issue.retest_due_at = None
         else:
             issue.remediation_status = "retest_required"
     record.review_decision = data.decision

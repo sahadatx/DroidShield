@@ -1,10 +1,10 @@
 """Strict analyst workflow contracts, separate from automated execution."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import Field, StringConstraints, field_validator, model_validator
+from pydantic import AwareDatetime, Field, StringConstraints, field_validator, model_validator
 
 from droidshield.schemas import RequestModel, ResponseModel, Revision
 
@@ -177,6 +177,12 @@ class FindingUpdate(RequestModel):
     remediation_status: (
         Literal["open", "in_progress", "accepted_risk", "retest_required"] | None
     ) = None
+    retest_due_at: AwareDatetime | None = None
+
+    @field_validator("retest_due_at")
+    @classmethod
+    def normalize_retest_due_at(cls, value):
+        return value.astimezone(UTC) if value is not None else None
 
     @field_validator("masvs_mapping")
     @classmethod
@@ -187,7 +193,7 @@ class FindingUpdate(RequestModel):
     def changes_valid(self):
         if len(self.model_fields_set) < 2:
             raise ValueError("At least one change is required")
-        for field in self.model_fields_set - {"cvss_vector", "cvss_score"}:
+        for field in self.model_fields_set - {"cvss_vector", "cvss_score", "retest_due_at"}:
             if getattr(self, field) is None:
                 raise ValueError("This field cannot be null")
         if ("cvss_vector" in self.model_fields_set) != ("cvss_score" in self.model_fields_set):

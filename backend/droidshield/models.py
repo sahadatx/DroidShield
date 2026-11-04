@@ -497,6 +497,7 @@ class Finding(IdentityMixin, WorkspaceMixin, CreatedMixin, UpdatedMixin, Revisio
     severity: Mapped[str] = mapped_column(String(16))
     verification_status: Mapped[str] = mapped_column(String(32), default="unreviewed")
     remediation_status: Mapped[str] = mapped_column(String(32), default="open")
+    retest_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cvss_vector: Mapped[str | None] = mapped_column(String(255))
     cvss_score: Mapped[float | None] = mapped_column(Float)
     masvs_mapping: Mapped[list[str]] = mapped_column(JSON, default=list)
@@ -554,6 +555,7 @@ class Finding(IdentityMixin, WorkspaceMixin, CreatedMixin, UpdatedMixin, Revisio
         ),
         CheckConstraint("revision >= 1", name="revision_positive"),
         Index("ix_findings_workspace_verification", "workspace_id", "verification_status"),
+        Index("ix_findings_workspace_retest_due", "workspace_id", "retest_due_at"),
     )
 
 

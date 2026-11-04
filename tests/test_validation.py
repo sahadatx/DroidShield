@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from droidshield.delivery_schemas import FindingUpdate
 from droidshield.schemas import (
     ArtifactCreate,
     ArtifactOut,
@@ -141,6 +142,14 @@ def test_mutating_commands_require_a_positive_integer_revision(revision):
     ):
         with pytest.raises(ValidationError):
             schema(revision=revision, **extra)
+
+
+def test_finding_retest_due_date_requires_an_aware_timestamp_and_can_be_cleared():
+    due = FindingUpdate(revision=1, retest_due_at="2026-11-05T12:00:00+06:00")
+    assert due.retest_due_at == datetime(2026, 11, 5, 6, tzinfo=UTC)
+    assert FindingUpdate(revision=1, retest_due_at=None).retest_due_at is None
+    with pytest.raises(ValidationError):
+        FindingUpdate(revision=1, retest_due_at="2026-11-05T12:00:00")
 
 
 @pytest.mark.parametrize(
