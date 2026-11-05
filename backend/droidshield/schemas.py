@@ -415,7 +415,7 @@ class ArtifactCreate(RequestModel):
     """Reserved metadata contract; a claim is never proof of an uploaded file."""
 
     version_name: ShortText | None = None
-    version_code: Annotated[int, Field(strict=True, ge=0)] | None = None
+    version_code: Annotated[int, Field(strict=True, ge=0, lt=2**63)] | None = None
     sha256: Annotated[str, StringConstraints(min_length=64, max_length=64)]
     file_size: Annotated[int, Field(strict=True, gt=0, le=2 * 1024**3)]
     original_filename: Annotated[str, StringConstraints(min_length=5, max_length=255)]

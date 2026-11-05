@@ -324,6 +324,7 @@ def test_assessment_patch_can_link_or_clear_records_without_clearing_required_fi
 def test_artifact_claims_are_bounded_and_do_not_accept_a_storage_location():
     artifact = ArtifactCreate(**artifact_data(version_code=0))
     assert artifact.sha256 == "a" * 64
+    assert ArtifactCreate(**artifact_data(version_code=2**63 - 1)).version_code == 2**63 - 1
     with pytest.raises(ValidationError):
         ArtifactCreate(**artifact_data(storage_ref="/tmp/untrusted.apk"))
     with pytest.raises(ValidationError):
@@ -338,6 +339,7 @@ def test_artifact_claims_are_bounded_and_do_not_accept_a_storage_location():
         {"file_size": 0},
         {"file_size": 2 * 1024**3 + 1},
         {"version_code": -1},
+        {"version_code": 2**63},
         {"version_code": True},
         {"original_filename": "../app.apk"},
         {"original_filename": "C:\\temp\\app.apk"},

@@ -400,7 +400,7 @@ def test_real_isolated_manifest_analysis_delivers_reviewable_unconfirmed_results
     analysis = expect(api.get(f"/assessments/{draft['id']}/analysis"))
     assert analysis["artifact_id"] == artifact["id"]
     assert analysis["artifact_sha256"] == hashlib.sha256(content).hexdigest()
-    assert analysis["engine_version"] == "droidshield-manifest-1"
+    assert analysis["engine_version"] == "droidshield-manifest-2"
     assert analysis["metadata"]["package_name"] == "com.example.store"
     assert analysis["metadata"]["application"]["debuggable"] is True
     assert len(analysis["limitations"]) == 4

@@ -54,7 +54,7 @@ def test_real_compiled_dex_has_decoded_method_evidence_and_no_literal_values(tmp
     result = analyze(tmp_path)
     assert validate_dex_result(result) == result
     assert result["schema_version"] == 2
-    assert result["engine_version"] == "droidshield-dex-1"
+    assert result["engine_version"] == "droidshield-dex-2"
     assert result["sha256"] == hashlib.sha256(dex_apk()).hexdigest()
     assert result["dex_summary"] == {
         "dex_files": 1,
@@ -302,7 +302,7 @@ def test_real_bubblewrap_dex_engine_and_manifest_default(tmp_path):
         raise
     assert result == analyze_dex_apk(path, dex_args())
     manifest = sandbox.run(path, mode="analyze")
-    assert manifest["engine_version"] == "droidshield-manifest-1"
+    assert manifest["engine_version"] == "droidshield-manifest-2"
     assert len(manifest["indicators"]) == 1
     assert "dex_summary" not in manifest
     path.write_bytes(dex_apk(b"dex\n035\0" + bytes(104)))

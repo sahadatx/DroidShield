@@ -64,7 +64,7 @@
           "version_code": {
             "anyOf": [
               {
-                "maximum": 2147483647.0,
+                "exclusiveMaximum": 9.223372036854776e+18,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -3754,7 +3754,7 @@
           "version_code": {
             "anyOf": [
               {
-                "maximum": 2147483647.0,
+                "exclusiveMaximum": 9.223372036854776e+18,
                 "minimum": 0.0,
                 "type": "integer"
               },

@@ -3,7 +3,7 @@
 Each version section is a dated snapshot of the specific checks and environment
 recorded there. Its test counts and integration results do not automatically
 apply to later commits or deployments. The current checked-in Alembic head is
-`0013_authorization_attachments`; the Version 0.5 note that the default local
+`0014_android_long_version_code`; the Version 0.5 note that the default local
 workspace had reached `0006_reports` describes that workspace at the time of
 that historical run. It does not identify the current source head or any
 deployment database revision. Use `droidshield migrate` to advance a development

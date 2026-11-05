@@ -9,7 +9,7 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import create_engine, text
+from sqlalchemy import BigInteger, Integer, create_engine, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
@@ -60,6 +60,22 @@ def migrated_url(request, tmp_path):
         with admin.begin() as connection:
             connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def test_migration_widens_artifact_version_code(migrated_url):
+    engine = create_engine(migrated_url)
+    try:
+        column = next(
+            column
+            for column in inspect(engine).get_columns("app_artifacts")
+            if column["name"] == "version_code"
+        )
+        if engine.dialect.name == "sqlite":
+            assert isinstance(column["type"], Integer)
+        else:
+            assert isinstance(column["type"], BigInteger)
+    finally:
+        engine.dispose()
 
 
 def test_migration_readiness_workflow_and_immutable_history(migrated_url):

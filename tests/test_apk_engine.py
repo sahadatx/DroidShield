@@ -92,17 +92,26 @@ def test_inspection_has_no_findings_and_inherited_permission_is_preserved(tmp_pa
     assert result["metadata"]["components"][0]["permission"] == "com.example.SECURE"
 
 
-def test_version_code_database_bounds_and_major_are_enforced(tmp_path):
+def test_full_android_version_code_is_composed_and_bounded(tmp_path):
     path = tmp_path / "version.apk"
-    path.write_bytes(build_apk(version_code=2**31 - 1, version_code_major=0))
+    path.write_bytes(build_apk(version_code=9, version_code_major=2))
     result = inspect_apk(path, engine_args())
-    assert result["metadata"]["version_code"] == 2**31 - 1
+    assert result["metadata"]["version_code"] == (2 << 32) | 9
     assert AnalysisResult.model_validate(result)
-    for kwargs in ({"version_code": 2**31}, {"version_code_major": 1}):
+    path.write_bytes(build_apk(version_code=2**31 - 1, version_code_major=2**31 - 1))
+    result = inspect_apk(path, engine_args())
+    assert result["metadata"]["version_code"] == ((2**31 - 1) << 32) | (2**31 - 1)
+    assert AnalysisResult.model_validate(result)
+    for kwargs in (
+        {"version_code": 2**31},
+        {"version_code": "@integer/version_code"},
+        {"version_code_major": 2**31},
+        {"version_code_major": "@integer/version_major"},
+    ):
         path.write_bytes(build_apk(**kwargs))
         with pytest.raises(InvalidAPK):
             inspect_apk(path, engine_args())
-    result["metadata"]["version_code"] = 2**31
+    result["metadata"]["version_code"] = 2**63
     with pytest.raises(ValidationError):
         AnalysisResult.model_validate(result)
 

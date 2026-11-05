@@ -24,7 +24,7 @@ if __name__ == "__main__":
 else:
     from droidshield.apk_engine import InvalidAPK, checked, inspect_apk
 
-ENGINE_VERSION = "droidshield-dex-1"
+ENGINE_VERSION = "droidshield-dex-2"
 LIMITATIONS = [
     "Bounded manifest and DEX instruction inspection; application code is never executed.",
     "Instruction references and same-method literals require analyst verification; reachability, arguments and exploitability are not established.",

@@ -53,7 +53,7 @@ _SCOPE_KEYS = (
 
 ENGINE_VERSIONS = {
     "manifest": ENGINE_VERSION,
-    "dex": "droidshield-dex-1",
+    "dex": "droidshield-dex-2",
     "mobsf": "droidshield-mobsf-1",
 }
 

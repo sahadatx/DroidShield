@@ -32,7 +32,7 @@ class IPAMetadata(ContractModel):
 
 class MobileIntakeResult(ContractModel):
     schema_version: Literal[4]
-    engine_version: Literal["droidshield-mobile-intake-1"]
+    engine_version: Literal["droidshield-mobile-intake-2"]
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     file_size: StrictInt = Field(gt=0)
     metadata: IPAMetadata | AABMetadata

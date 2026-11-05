@@ -23,7 +23,7 @@ if __name__ == "__main__":
 else:
     from droidshield.apk_engine import InvalidAPK, checked, metadata_from_nodes
 
-ENGINE_VERSION = "droidshield-mobile-intake-1"
+ENGINE_VERSION = "droidshield-mobile-intake-2"
 LIMITATIONS = [
     "Identity and configuration intake only; no application code is executed or decompiled.",
     "Signatures, entitlements, secret values, libraries and binary protections are not verified.",

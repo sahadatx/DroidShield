@@ -19,7 +19,7 @@ import sys
 import zipfile
 import zlib
 
-ENGINE_VERSION = "droidshield-manifest-1"
+ENGINE_VERSION = "droidshield-manifest-2"
 LIMITATIONS = [
     "Manifest-only static analysis; application code is not executed or inspected.",
     "Indicators require analyst verification and do not establish exploitability.",
@@ -27,6 +27,8 @@ LIMITATIONS = [
     "Runtime behavior, dependencies, secrets and backend APIs are not evaluated.",
 ]
 ANDROID_NS = "http://schemas.android.com/apk/res/android"
+ANDROID_VERSION_CODE_COMPONENT_MAX = 2**31 - 1
+ANDROID_LONG_VERSION_CODE_MAX = 2**63 - 1
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+\Z")
 COMPONENT = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)+\Z")
 KINDS = {"activity", "activity-alias", "service", "receiver", "provider"}
@@ -258,12 +260,22 @@ def metadata_from_nodes(nodes):
     version = attrs.get((ANDROID_NS, "versionName"))
     if not isinstance(version, str) or not re.fullmatch(r"[A-Za-z0-9_.+() -]{1,128}", version):
         version = None
-    if (ANDROID_NS, "versionCodeMajor") in attrs:
-        checked(integer(attrs[(ANDROID_NS, "versionCodeMajor")], 2**31 - 1) == 0)
+    major_key = (ANDROID_NS, "versionCodeMajor")
+    minor_key = (ANDROID_NS, "versionCode")
+    major = 0
+    if major_key in attrs:
+        major = integer(attrs[major_key], ANDROID_VERSION_CODE_COMPONENT_MAX)
+        checked(major is not None)
+    minor = None
+    if minor_key in attrs:
+        minor = integer(attrs[minor_key], ANDROID_VERSION_CODE_COMPONENT_MAX)
+        checked(minor is not None)
+    version_code = None if minor is None and major == 0 else (major << 32) | (minor or 0)
+    checked(version_code is None or version_code <= ANDROID_LONG_VERSION_CODE_MAX)
     metadata = {
         "package_name": package,
         "version_name": version,
-        "version_code": integer(attrs.get((ANDROID_NS, "versionCode")), 2**31 - 1),
+        "version_code": version_code,
         "min_sdk": None,
         "target_sdk": None,
         "permissions": [],

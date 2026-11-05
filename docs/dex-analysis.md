@@ -1,6 +1,6 @@
 # Isolated DEX analysis
 
-The `droidshield-dex-1` engine adds real DEX instruction inspection to the existing
+The `droidshield-dex-2` engine adds real DEX instruction inspection to the existing
 protected APK workflow. It reads the binary manifest and standard `classes.dex`,
 `classes2.dex`, etc. inside the existing network-disabled Bubblewrap sandbox.
 No archive is extracted, no application code is loaded or executed, and there is
@@ -71,7 +71,7 @@ and require analyst verification; successful processing still means Needs Review
 
 ## Output contract and resource limits
 
-DEX results use `schema_version: 2`, `engine_version: droidshield-dex-1`, the same
+DEX results use `schema_version: 2`, `engine_version: droidshield-dex-2`, the same
 server-matched APK SHA-256, byte size and manifest metadata, fixed candidate
 narratives, four exact limitation statements and `dex_summary` with:
 

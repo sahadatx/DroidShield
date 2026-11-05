@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     CheckConstraint,
     DateTime,
     Float,
@@ -240,7 +241,7 @@ class AppArtifact(IdentityMixin, WorkspaceMixin, CreatedMixin, Base):
 
     project_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), index=True)
     version_name: Mapped[str | None] = mapped_column(String(255))
-    version_code: Mapped[int | None] = mapped_column(Integer)
+    version_code: Mapped[int | None] = mapped_column(BigInteger)
     sha256: Mapped[str] = mapped_column(String(64))
     storage_ref: Mapped[str] = mapped_column(String(2048))
     original_filename: Mapped[str] = mapped_column(String(255))

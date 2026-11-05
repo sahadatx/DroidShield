@@ -39,7 +39,7 @@ from tests.test_concurrency import seed_queueable_assessment
 def engine_output():
     output = {
         "schema_version": 1,
-        "engine_version": "droidshield-manifest-1",
+        "engine_version": "droidshield-manifest-2",
         "sha256": "a" * 64,
         "file_size": 100,
         "metadata": {

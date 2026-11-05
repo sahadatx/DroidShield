@@ -31,7 +31,7 @@ def test_real_dex_upload_queue_worker_result_and_scoped_finding_reads(upload_api
     assert worker.run_once(api.client.app.state.settings, api.engine)
     result = expect(api.get(f"/assessments/{draft['id']}/analysis"))
     assert result["schema_version"] == 2
-    assert result["engine_version"] == "droidshield-dex-1"
+    assert result["engine_version"] == "droidshield-dex-2"
     assert result["dex_summary"]["dex_files"] == 1
     assert result["dex_summary"]["analyzed_methods"] == 2
     assert "_dex_summary" not in result["metadata"]
@@ -59,7 +59,7 @@ def test_real_dex_upload_queue_worker_result_and_scoped_finding_reads(upload_api
         job = session.scalar(
             select(AnalysisJob).where(AnalysisJob.assessment_id == UUID(draft["id"]))
         )
-        assert job.tool_versions == {"static_dex": "droidshield-dex-1"}
+        assert job.tool_versions == {"static_dex": "droidshield-dex-2"}
         assert "dex_max_files" in job.configuration_snapshot["execution"]
 
 

@@ -24,7 +24,7 @@ from droidshield.dex_engine import (
     make_indicator,
 )
 
-ENGINE_VERSION = "droidshield-manifest-1"
+ENGINE_VERSION = "droidshield-manifest-2"
 LIMITATIONS = (
     "Manifest-only static analysis; application code is not executed or inspected.",
     "Indicators require analyst verification and do not establish exploitability.",
@@ -63,7 +63,7 @@ class ComponentMetadata(ContractModel):
 class ManifestMetadata(ContractModel):
     package_name: str = Field(min_length=3, max_length=255)
     version_name: str | None = Field(max_length=128)
-    version_code: StrictInt | None = Field(ge=0, le=2**31 - 1)
+    version_code: StrictInt | None = Field(ge=0, lt=2**63)
     min_sdk: StrictInt | None = Field(ge=1, le=10000)
     target_sdk: StrictInt | None = Field(ge=1, le=10000)
     permissions: list[str] = Field(max_length=2048)
@@ -139,7 +139,7 @@ class ManifestIndicator(ContractModel):
 
 class AnalysisResult(ContractModel):
     schema_version: Literal[1]
-    engine_version: Literal["droidshield-manifest-1"]
+    engine_version: Literal["droidshield-manifest-2"]
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     file_size: StrictInt = Field(gt=0)
     metadata: ManifestMetadata
@@ -264,7 +264,7 @@ class DexSummary(ContractModel):
 
 class DexAnalysisResult(ContractModel):
     schema_version: Literal[2]
-    engine_version: Literal["droidshield-dex-1"]
+    engine_version: Literal["droidshield-dex-2"]
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     file_size: StrictInt = Field(gt=0)
     metadata: ManifestMetadata

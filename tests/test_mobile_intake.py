@@ -65,24 +65,32 @@ def proto_attribute(name, value, *, android=False, compiled=False):
     if android:
         result += proto_field(1, "http://schemas.android.com/apk/res/android")
     if compiled:
-        primitive = varint(8 << 3) + varint(int(value))
+        kind = 8 if type(value) is bool else 7
+        primitive = varint(kind << 3) + varint(int(value))
         result += proto_field(6, proto_field(7, primitive))
     else:
         result += proto_field(3, value)
     return result
 
 
-def aab_bytes(*, package="com.example.store", manifest=None):
+def aab_bytes(
+    *, package="com.example.store", manifest=None, version_code=9, version_code_major=None
+):
     app = proto_field(3, "application") + proto_field(
         4, proto_attribute("debuggable", True, android=True, compiled=True)
     )
     root = (
         proto_field(3, "manifest")
         + proto_field(4, proto_attribute("package", package))
-        + proto_field(4, proto_attribute("versionCode", "9", android=True))
+        + proto_field(4, proto_attribute("versionCode", str(version_code), android=True))
         + proto_field(4, proto_attribute("versionName", "2.0", android=True))
         + proto_field(5, proto_field(1, app))
     )
+    if version_code_major is not None:
+        root += proto_field(
+            4,
+            proto_attribute("versionCodeMajor", version_code_major, android=True, compiled=True),
+        )
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
         archive.writestr("BundleConfig.pb", b"\x0a\x00")
@@ -163,6 +171,25 @@ def test_aab_protobuf_manifest_intake_is_not_automated_apk_execution(upload_api)
         api.post(f"/assessments/{assessment['id']}/queue", {"revision": current["revision"]}), 409
     )
     assert expect(api.get(f"/assessments/{assessment['id']}/findings"))["total"] == 0
+
+
+def test_aab_long_version_code_is_preserved_through_artifact_storage(upload_api):
+    api = upload_api
+    _, assessment = draft(api, assessment_type="static")
+    content = aab_bytes(version_code=23, version_code_major=17)
+    item = expect(put(api, assessment, content, "example.aab"), 201)
+    full_code = (17 << 32) | 23
+    assert item["version_code"] == full_code
+    detail = expect(api.get(f"/artifacts/{item['id']}"))
+    assert detail["version_code"] == full_code
+    assert detail["metadata"]["version_code"] == full_code
+
+
+def test_aab_rejects_version_code_components_outside_supported_android_range(upload_api):
+    api = upload_api
+    _, assessment = draft(api, assessment_type="static")
+    content = aab_bytes(version_code=9, version_code_major=2**31)
+    expect(put(api, assessment, content, "unsupported.aab"), 422)
 
 
 def test_generic_apk_upload_preserves_legacy_metadata_and_idempotency(upload_api):

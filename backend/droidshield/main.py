@@ -28,7 +28,7 @@ from droidshield.errors import DomainError
 from droidshield.models import AuditEvent
 from droidshield.report_api import router as report_router
 
-SCHEMA_REVISION = "0013_authorization_attachments"
+SCHEMA_REVISION = "0014_android_long_version_code"
 logger = logging.getLogger("droidshield")
 
 
