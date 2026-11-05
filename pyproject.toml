@@ -23,6 +23,7 @@ dependencies = [
   "httpx>=0.28,<0.29",
   "cryptography>=46,<47",
   "reportlab>=4.5.1,<4.6",
+  "Pillow>=12,<14",
   "cvss==3.6",
   "uharfbuzz==0.57.0",
 ]

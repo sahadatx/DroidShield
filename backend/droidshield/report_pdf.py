@@ -1,6 +1,10 @@
 """Bounded, escaped ReportLab PDF rendering from a frozen report allowlist."""
 
+import base64
+import binascii
+import hashlib
 import io
+import warnings
 from pathlib import Path
 from threading import RLock
 from xml.sax.saxutils import escape
@@ -14,6 +18,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     HRFlowable,
+    Image,
     LongTable,
     PageBreak,
     Paragraph,
@@ -23,6 +28,12 @@ from reportlab.platypus import (
 )
 
 _FONT_LOCK = RLock()
+MAX_PDF_SCREENSHOTS = 10
+MAX_PDF_SCREENSHOT_FILE_BYTES = 2 * 1024**2
+MAX_PDF_SCREENSHOT_BYTES = 4 * 1024**2
+MAX_PDF_SCREENSHOT_PIXELS = 8_000_000
+MAX_PDF_SCREENSHOT_SIDE = 6_000
+MAX_NORMALIZED_SCREENSHOT_BYTES = 6 * 1024**2
 
 
 def _fonts():
@@ -44,9 +55,98 @@ def _safe(value):
     return escape(text).replace("\n", "<br/>")
 
 
+def _group_digest(value):
+    digest = str(value)
+    return " ".join(digest[index : index + 16] for index in range(0, len(digest), 16))
+
+
+def _normalize_screenshots(envelope, report):
+    expected = {}
+    for finding in report.get("findings", []):
+        for evidence in finding.get("evidence", []):
+            attachment = evidence.get("attachment")
+            if attachment and attachment.get("pdf_inclusion") == "embedded":
+                expected[evidence["id"]] = attachment
+    for retest in report.get("retests", []):
+        for evidence in retest.get("new_evidence", []):
+            attachment = evidence.get("attachment")
+            if attachment and attachment.get("pdf_inclusion") == "embedded":
+                expected[evidence["id"]] = attachment
+    encoded_images = envelope.get("pdf_images", {})
+    if not isinstance(encoded_images, dict) or encoded_images.keys() != expected.keys():
+        raise ValueError("PDF screenshot assets do not match the approved snapshot")
+    if len(expected) > MAX_PDF_SCREENSHOTS:
+        raise ValueError("PDF screenshot count exceeds the fixed limit")
+    raw_total = sum(item.get("file_size", 0) for item in expected.values())
+    if raw_total > MAX_PDF_SCREENSHOT_BYTES:
+        raise ValueError("PDF screenshot bytes exceed the fixed limit")
+
+    from PIL import Image as PILImage
+
+    PILImage.MAX_IMAGE_PIXELS = MAX_PDF_SCREENSHOT_PIXELS
+    normalized = {}
+    normalized_total = 0
+    for evidence_id, metadata in expected.items():
+        if (
+            metadata.get("media_type") != "image/png"
+            or not isinstance(metadata.get("file_size"), int)
+            or metadata["file_size"] < 1
+            or metadata["file_size"] > MAX_PDF_SCREENSHOT_FILE_BYTES
+            or not isinstance(metadata.get("sha256"), str)
+            or len(metadata["sha256"]) != 64
+        ):
+            raise ValueError("PDF screenshot metadata is invalid")
+        try:
+            raw = base64.b64decode(encoded_images[evidence_id], validate=True)
+        except (binascii.Error, ValueError, TypeError) as exc:
+            raise ValueError("PDF screenshot encoding is invalid") from exc
+        if (
+            len(raw) != metadata["file_size"]
+            or hashlib.sha256(raw).hexdigest() != metadata["sha256"]
+        ):
+            raise ValueError("PDF screenshot integrity check failed")
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", PILImage.DecompressionBombWarning)
+                with PILImage.open(io.BytesIO(raw), formats=["PNG"]) as image:
+                    if (
+                        image.format != "PNG"
+                        or getattr(image, "n_frames", 1) != 1
+                        or image.width < 1
+                        or image.height < 1
+                        or image.width > MAX_PDF_SCREENSHOT_SIDE
+                        or image.height > MAX_PDF_SCREENSHOT_SIDE
+                        or image.width * image.height > MAX_PDF_SCREENSHOT_PIXELS
+                    ):
+                        raise ValueError("PDF screenshot dimensions are unsupported")
+                    image.verify()
+                with PILImage.open(io.BytesIO(raw), formats=["PNG"]) as source:
+                    source.load()
+                    rgba = source.convert("RGBA")
+                    clean = PILImage.new("RGB", rgba.size, "white")
+                    clean.paste(rgba, mask=rgba.getchannel("A"))
+                    clean.thumbnail((1600, 1200), PILImage.Resampling.LANCZOS)
+                    output = io.BytesIO()
+                    clean.save(output, format="PNG", optimize=False)
+                    clean_bytes = output.getvalue()
+                    normalized_total += len(clean_bytes)
+                    if normalized_total > MAX_NORMALIZED_SCREENSHOT_BYTES:
+                        raise ValueError("Normalized PDF screenshots exceed the fixed limit")
+                    normalized[evidence_id] = (clean_bytes, clean.width, clean.height)
+        except (
+            OSError,
+            SyntaxError,
+            PILImage.DecompressionBombError,
+            PILImage.DecompressionBombWarning,
+        ) as exc:
+            raise ValueError("PDF screenshot could not be safely decoded") from exc
+    return normalized
+
+
 def render_pdf(envelope: dict) -> bytes:
     _fonts()
     payload = envelope["report"]
+    screenshot_images = _normalize_screenshots(envelope, payload)
     styles = getSampleStyleSheet()
     for style in styles.byName.values():
         style.fontName = "DSBody"
@@ -276,6 +376,43 @@ def render_pdf(envelope: dict) -> bytes:
                 )
                 field("Evidence SHA-256", evidence["sha256"])
                 body.append(paragraph(evidence["text"]))
+                attachment = evidence.get("attachment")
+                if attachment:
+                    inclusion = attachment.get("pdf_inclusion")
+                    if inclusion == "embedded":
+                        image_bytes, image_width, image_height = screenshot_images[evidence["id"]]
+                        scale = min(166 * mm / image_width, 100 * mm / image_height, 1)
+                        field("Screenshot evidence ID", evidence["id"])
+                        field("Source screenshot SHA-256", _group_digest(attachment["sha256"]))
+                        body.append(
+                            paragraph(
+                                "Sanitized screenshot normalized for this PDF; source image metadata was stripped.",
+                                "Muted",
+                            )
+                        )
+                        body.append(
+                            Image(
+                                io.BytesIO(image_bytes),
+                                width=image_width * scale,
+                                height=image_height * scale,
+                                hAlign="LEFT",
+                            )
+                        )
+                        body.append(Spacer(1, 8))
+                    elif inclusion == "omitted_limit":
+                        body.append(
+                            paragraph(
+                                f"Screenshot evidence {evidence['id']} was not embedded because the PDF image limits were reached. Its protected evidence record remains available in the workspace.",
+                                "Muted",
+                            )
+                        )
+                    elif inclusion == "duplicate_reference":
+                        body.append(
+                            paragraph(
+                                f"Screenshot evidence {evidence['id']} is shown at its first report reference.",
+                                "Muted",
+                            )
+                        )
             body.append(
                 HRFlowable(
                     width="100%",
@@ -307,6 +444,27 @@ def render_pdf(envelope: dict) -> bytes:
             for proof in item.get("new_evidence", []):
                 field(f"Retest evidence: {proof['title']}", proof["text"])
                 body.append(paragraph(f"Evidence SHA-256: {proof['sha256']}", "Muted"))
+                attachment = proof.get("attachment")
+                if attachment and attachment.get("pdf_inclusion") == "embedded":
+                    image_bytes, image_width, image_height = screenshot_images[proof["id"]]
+                    scale = min(166 * mm / image_width, 100 * mm / image_height, 1)
+                    field("Retest screenshot evidence ID", proof["id"])
+                    field("Source screenshot SHA-256", _group_digest(attachment["sha256"]))
+                    body.append(
+                        paragraph(
+                            "Sanitized retest screenshot normalized for this PDF; source image metadata was stripped.",
+                            "Muted",
+                        )
+                    )
+                    body.append(
+                        Image(
+                            io.BytesIO(image_bytes),
+                            width=image_width * scale,
+                            height=image_height * scale,
+                            hAlign="LEFT",
+                        )
+                    )
+                    body.append(Spacer(1, 8))
     else:
         body.append(
             paragraph(
@@ -316,6 +474,14 @@ def render_pdf(envelope: dict) -> bytes:
     body.append(PageBreak())
     section("Appendix and provenance")
     field("Tool versions", json_text(payload["tool_versions"]))
+    screenshot_summary = payload.get("pdf_screenshots", {})
+    if screenshot_summary:
+        field(
+            "Screenshot embedding",
+            f"{screenshot_summary.get('embedded_count', 0)} embedded; "
+            f"{screenshot_summary.get('omitted_by_limit', 0)} omitted by image limits; "
+            f"{screenshot_summary.get('excluded_by_template', 0)} excluded by executive template",
+        )
     for framework in coverage.get("frameworks", []):
         field(f"{framework['id']} {framework['version']}", framework["url"])
     field("Report snapshot SHA-256", envelope["snapshot_sha256"])

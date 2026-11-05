@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from droidshield.cvss_scoring import score_cvss, validate_cvss
-from droidshield.models import Assessment, AuditEvent, Finding
+from droidshield.models import Assessment, AssessmentEvidence, AuditEvent, Finding
 from droidshield.report_api import router
 from droidshield.report_models import ReportExport
 from tests.test_api import PREFIX, expect, grant, make_assessment, make_project
@@ -250,17 +250,103 @@ def test_report_snapshot_references_screenshot_without_embedding_its_bytes(repor
         session.commit()
 
     report = new_report(api, assessment)
-    snapshot = expect(api.get(f"/reports/{report['id']}", role="analyst"))["snapshot"]
+    report_detail = expect(api.get(f"/reports/{report['id']}", role="analyst"))
+    snapshot = report_detail["snapshot"]
     proof = snapshot["findings"][0]["evidence"][0]
     assert proof["attachment"] == {
         "sha256": hashlib.sha256(png).hexdigest(),
         "file_size": len(png),
         "media_type": "image/png",
         "display_name": "screenshot.png",
+        "pdf_inclusion": "embedded",
     }
+    assert snapshot["pdf_screenshots"]["embedded_count"] == 1
+    assert (
+        hashlib.sha256(
+            json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        == report_detail["snapshot_sha256"]
+    )
     assert evidence["id"] == proof["id"]
     assert "Protected screenshot attachment" in proof["text"]
     assert png.hex() not in json.dumps(snapshot)
+    expect(api.post(f"/reports/{report['id']}/release", {"decision": "approve"}, role="admin"))
+    output = expect(
+        api.post(f"/reports/{report['id']}/exports", {"format": "pdf"}, role="analyst"), 201
+    )
+    pdf = api.get(f"/report-exports/{output['id']}/download", role="analyst")
+    assert pdf.status_code == 200
+    reader = PdfReader(io.BytesIO(pdf.content))
+    assert sum(len(page.images) for page in reader.pages) == 1
+    text = "\n".join(page.extract_text() for page in reader.pages)
+    assert "Sanitized screenshot" in text
+    assert proof["attachment"]["sha256"] in unicodedata.normalize("NFKC", "".join(text.split()))
+
+    executive = new_report(api, assessment, template="executive")
+    executive_snapshot = expect(api.get(f"/reports/{executive['id']}", role="analyst"))["snapshot"]
+    assert executive_snapshot["findings"][0]["evidence"][0]["attachment"]["pdf_inclusion"] == (
+        "template_excluded"
+    )
+    expect(api.post(f"/reports/{executive['id']}/release", {"decision": "approve"}, role="admin"))
+    executive_export = expect(
+        api.post(f"/reports/{executive['id']}/exports", {"format": "pdf"}, role="analyst"),
+        201,
+    )
+    executive_pdf = api.get(f"/report-exports/{executive_export['id']}/download", role="analyst")
+    executive_reader = PdfReader(io.BytesIO(executive_pdf.content))
+    assert sum(len(page.images) for page in executive_reader.pages) == 0
+
+
+def test_pdf_export_rejects_tampered_screenshot_evidence(reporting):
+    from droidshield.storage import Storage
+
+    api = reporting
+    _, assessment = completed(api)
+    with Session(api.engine) as session:
+        issue = session.scalar(
+            select(Finding).where(
+                Finding.assessment_id == UUID(assessment["id"]),
+                Finding.verification_status == "confirmed",
+            )
+        )
+        finding_id = str(issue.id)
+    png = _tiny_png()
+    evidence_response = api.client.post(
+        PREFIX + f"/assessments/{assessment['id']}/evidence-attachments",
+        data={
+            "title": "Sanitized access-control proof",
+            "sanitized": "true",
+            "platform": "android",
+            "tool": "Manual review",
+            "tool_version": "1.0",
+            "environment": "Dedicated client test lab",
+            "finding_id": finding_id,
+            "release_ref": "backend-release-2026-10-31",
+        },
+        files={"file": ("proof.png", png, "image/png")},
+        headers=api.headers("analyst", "report-screenshot-tamper-evidence"),
+    )
+    evidence = expect(evidence_response, 201)
+    with Session(api.engine) as session:
+        issue = session.get(Finding, UUID(finding_id))
+        issue.evidence_provenance = {"source": "manual", "evidence_ids": [evidence["id"]]}
+        session.commit()
+    report = new_report(api, assessment)
+    expect(api.post(f"/reports/{report['id']}/release", {"decision": "approve"}, role="admin"))
+    with Session(api.engine) as session:
+        record = session.get(AssessmentEvidence, UUID(evidence["id"]))
+        storage_ref = record.attachment.storage_ref
+    storage = Storage(api.client.app.state.settings.storage_root / "evidence-attachments")
+    path = storage._path(storage_ref)
+    path.chmod(0o600)
+    path.write_bytes(b"x" * len(png))
+    response = api.client.post(
+        PREFIX + f"/reports/{report['id']}/exports",
+        json={"format": "pdf"},
+        headers=api.headers("analyst", "tampered-report-screenshot-export"),
+    )
+    assert response.status_code == 503
+    assert expect(api.get(f"/reports/{report['id']}/exports", role="analyst"))["total"] == 0
 
 
 def test_independent_author_cannot_approve_own_report_and_versions_freeze(reporting):

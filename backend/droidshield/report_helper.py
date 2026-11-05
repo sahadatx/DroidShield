@@ -4,6 +4,8 @@ import json
 import resource
 import sys
 
+MAX_INPUT = 8 * 1024**2
+
 
 def main():
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
@@ -12,8 +14,8 @@ def main():
     resource.setrlimit(resource.RLIMIT_FSIZE, (16 * 1024**2, 16 * 1024**2))
     resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
     resource.setrlimit(resource.RLIMIT_NPROC, (64, 64))
-    encoded = sys.stdin.buffer.read(2 * 1024**2 + 8193)
-    if len(encoded) > 2 * 1024**2 + 8192:
+    encoded = sys.stdin.buffer.read(MAX_INPUT + 1)
+    if len(encoded) > MAX_INPUT:
         return 2
     from droidshield.report_pdf import render_pdf
 

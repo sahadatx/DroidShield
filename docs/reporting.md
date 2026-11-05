@@ -82,14 +82,29 @@ checked against the same Assessment/Project and its reviewed artifact/release.
 
 The first implementation allows 200 findings, 20 selected evidence records per
 finding/retest, 200 reviewed retests, a 2 MiB canonical snapshot and 16 MiB exports.
-Oversized content is rejected explicitly. Sanitized text excerpts are included in
-the snapshot. A linked PNG screenshot contributes its immutable ID, file size and
-SHA-256; its pixels remain a separate protected download, not embedded in the PDF
-or JSON snapshot. PDFs do not execute Markdown/HTML, fetch images, or render
-uploaded application content. Report narratives containing recognized credential
-patterns or control characters are rejected before persistence. Sanitization
-cannot identify every possible secret: analysts must review excerpts before
-approval.
+The separate PDF helper accepts at most 8 MiB of render input and emits at most
+16 MiB of PDF output. Oversized content is rejected explicitly. Sanitized text
+excerpts are included in the snapshot. A linked PNG contributes its immutable evidence ID, file size,
+SHA-256 and a frozen PDF-inclusion decision; the snapshot itself never contains
+image bytes. Independently approved technical/combined PDFs embed only screenshots
+selected from confirmed finding evidence or independently approved retests. The
+review screen exposes that inclusion decision and retains the protected download.
+Executive PDFs continue to omit detailed finding evidence. Screenshots omitted by
+the bounds are identified in the PDF and remain protected workspace downloads.
+
+PDF embedding allows at most 10 images, 2 MiB per source image and 4 MiB of total
+source image bytes. The isolated renderer accepts PNG only, rejects animation,
+limits each raster to 8 million pixels and 6,000 pixels per side, decodes and
+normalizes it to a metadata-free RGB PNG no larger than 1,600 × 1,200, and caps
+normalized image bytes at 6 MiB in total. Its child process retains the existing
+CPU, memory, file, output and wall-time limits. Source bytes are re-read from
+private storage and checked against the immutable report snapshot digest and size
+before they enter the renderer. A failed integrity check or decode publishes no
+PDF. JSON exports preserve screenshot metadata and digests but do not carry pixels.
+PDFs do not execute Markdown/HTML, fetch images, or render arbitrary uploaded
+application content. Report narratives containing recognized credential patterns
+or control characters are rejected before persistence. Sanitization cannot
+identify every possible secret: analysts must review excerpts before approval.
 
 PDF rendering runs in a separate unprivileged, fixed helper process. The parent
 clears its environment, supplies a private temporary working directory and

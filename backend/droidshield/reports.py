@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import json
@@ -20,8 +21,10 @@ from droidshield.models import (
     AnalysisJob,
     AnalysisResult,
     AppArtifact,
+    AssessmentEvidence,
     Authorization,
     Client,
+    EvidenceAttachment,
     Finding,
     Report,
     Retest,
@@ -33,6 +36,9 @@ from droidshield.storage import Storage, StorageError
 
 MAX_EXPORT_BYTES = 16 * 1024**2
 MAX_SNAPSHOT_BYTES = 2 * 1024**2
+MAX_PDF_SCREENSHOTS = 10
+MAX_PDF_SCREENSHOT_FILE_BYTES = 2 * 1024**2
+MAX_PDF_SCREENSHOT_BYTES = 4 * 1024**2
 ORDER = {value: index for index, value in enumerate(("critical", "high", "medium", "low", "info"))}
 ALIGNMENT_NOTICE = (
     "This assessment documents security testing and evidence within its stated scope. "
@@ -78,6 +84,110 @@ def snapshot(ctx: svc.Context, record: Report) -> ReportSnapshot:
 
 def _time(value):
     return utc(value).isoformat() if value is not None else None
+
+
+def _attachment_snapshot(attachment, budget, template, evidence_id):
+    if attachment is None:
+        return None
+    identifier = str(evidence_id)
+    if identifier in budget["seen"]:
+        inclusion = "duplicate_reference"
+    elif template not in {"technical", "combined"}:
+        inclusion = "template_excluded"
+        budget["seen"].add(identifier)
+        budget["excluded_by_template"] += 1
+    elif (
+        budget["embedded_count"] >= MAX_PDF_SCREENSHOTS
+        or attachment.file_size > MAX_PDF_SCREENSHOT_FILE_BYTES
+        or budget["embedded_bytes"] + attachment.file_size > MAX_PDF_SCREENSHOT_BYTES
+    ):
+        inclusion = "omitted_limit"
+        budget["seen"].add(identifier)
+        budget["omitted_by_limit"] += 1
+    else:
+        inclusion = "embedded"
+        budget["seen"].add(identifier)
+        budget["embedded_count"] += 1
+        budget["embedded_bytes"] += attachment.file_size
+    return {
+        "sha256": attachment.sha256,
+        "file_size": attachment.file_size,
+        "media_type": attachment.media_type,
+        "display_name": attachment.display_name,
+        "pdf_inclusion": inclusion,
+    }
+
+
+def _embedded_screenshots(snapshot_json):
+    selected = {}
+    for finding in snapshot_json.get("findings", []):
+        evidence_items = finding.get("evidence", [])
+        for evidence in evidence_items:
+            attachment = evidence.get("attachment")
+            if attachment and attachment.get("pdf_inclusion") == "embedded":
+                selected[evidence["id"]] = attachment
+    for retest in snapshot_json.get("retests", []):
+        for evidence in retest.get("new_evidence", []):
+            attachment = evidence.get("attachment")
+            if attachment and attachment.get("pdf_inclusion") == "embedded":
+                selected[evidence["id"]] = attachment
+    if len(selected) > MAX_PDF_SCREENSHOTS or any(
+        item.get("media_type") != "image/png"
+        or not isinstance(item.get("file_size"), int)
+        or item["file_size"] < 1
+        or item["file_size"] > MAX_PDF_SCREENSHOT_FILE_BYTES
+        or not isinstance(item.get("sha256"), str)
+        or len(item["sha256"]) != 64
+        for item in selected.values()
+    ):
+        raise DomainError(409, "report_integrity_failed", "Report screenshot metadata is invalid")
+    if sum(item["file_size"] for item in selected.values()) > MAX_PDF_SCREENSHOT_BYTES:
+        raise DomainError(409, "report_integrity_failed", "Report screenshot limits are invalid")
+    return selected
+
+
+def _pdf_screenshot_assets(ctx, record, snapshot_json, settings):
+    from droidshield import delivery as delivery_svc
+
+    expected = _embedded_screenshots(snapshot_json)
+    if not expected:
+        return {}
+    assessment_id = UUID(snapshot_json["assessment"]["id"])
+    rows = ctx.session.execute(
+        select(AssessmentEvidence, EvidenceAttachment)
+        .join(EvidenceAttachment, EvidenceAttachment.evidence_id == AssessmentEvidence.id)
+        .where(
+            AssessmentEvidence.workspace_id == ctx.workspace_id,
+            AssessmentEvidence.project_id == record.project_id,
+            AssessmentEvidence.assessment_id == assessment_id,
+            EvidenceAttachment.workspace_id == ctx.workspace_id,
+            AssessmentEvidence.id.in_([UUID(value) for value in expected]),
+        )
+    ).all()
+    actual = {str(evidence.id): (evidence, attachment) for evidence, attachment in rows}
+    if actual.keys() != expected.keys():
+        raise DomainError(
+            503, "evidence_unavailable", "Approved screenshot evidence is unavailable"
+        )
+    encoded = {}
+    for evidence_id, metadata in expected.items():
+        evidence, attachment = actual[evidence_id]
+        if (
+            attachment.media_type != metadata["media_type"]
+            or attachment.sha256 != metadata["sha256"]
+            or attachment.file_size != metadata["file_size"]
+        ):
+            raise DomainError(
+                409, "report_integrity_failed", "Report screenshot provenance changed"
+            )
+        content = delivery_svc.get_evidence_attachment(settings, evidence)
+        if (
+            len(content) != metadata["file_size"]
+            or hashlib.sha256(content).hexdigest() != metadata["sha256"]
+        ):
+            raise DomainError(409, "report_integrity_failed", "Report screenshot digest changed")
+        encoded[evidence_id] = base64.b64encode(content).decode("ascii")
+    return encoded
 
 
 def create(ctx: svc.Context, assessment_id: UUID, data: ReportCreate, settings: Settings) -> Report:
@@ -137,6 +247,13 @@ def create(ctx: svc.Context, assessment_id: UUID, data: ReportCreate, settings: 
         )
     findings.sort(key=lambda item: (ORDER[item.severity], str(item.id)))
     finding_payload = []
+    screenshot_budget = {
+        "seen": set(),
+        "embedded_count": 0,
+        "embedded_bytes": 0,
+        "omitted_by_limit": 0,
+        "excluded_by_template": 0,
+    }
     for item in findings:
         try:
             validate_cvss(item.cvss_vector, item.cvss_score)
@@ -185,15 +302,8 @@ def create(ctx: svc.Context, assessment_id: UUID, data: ReportCreate, settings: 
                         "created_at": _time(row.created_at),
                         "release_ref": row.release_ref,
                         "text": get_evidence_content(settings, row),
-                        "attachment": (
-                            {
-                                "sha256": row.attachment.sha256,
-                                "file_size": row.attachment.file_size,
-                                "media_type": row.attachment.media_type,
-                                "display_name": row.attachment.display_name,
-                            }
-                            if row.attachment
-                            else None
+                        "attachment": _attachment_snapshot(
+                            row.attachment, screenshot_budget, data.template, row.id
                         ),
                     }
                 )
@@ -336,15 +446,8 @@ def create(ctx: svc.Context, assessment_id: UUID, data: ReportCreate, settings: 
                         "sha256": proof.sha256,
                         "release_ref": proof.release_ref,
                         "text": get_evidence_content(settings, proof),
-                        "attachment": (
-                            {
-                                "sha256": proof.attachment.sha256,
-                                "file_size": proof.attachment.file_size,
-                                "media_type": proof.attachment.media_type,
-                                "display_name": proof.attachment.display_name,
-                            }
-                            if proof.attachment
-                            else None
+                        "attachment": _attachment_snapshot(
+                            proof.attachment, screenshot_budget, data.template, proof.id
                         ),
                     }
                     for proof in proofs
@@ -407,6 +510,13 @@ def create(ctx: svc.Context, assessment_id: UUID, data: ReportCreate, settings: 
         "excluded_findings_count": all_count - len(findings),
         "severity_filter": data.severity_filter,
         "findings": finding_payload,
+        "pdf_screenshots": {
+            "embedded_count": screenshot_budget["embedded_count"],
+            "omitted_by_limit": screenshot_budget["omitted_by_limit"],
+            "excluded_by_template": screenshot_budget["excluded_by_template"],
+            "max_count": MAX_PDF_SCREENSHOTS,
+            "max_total_bytes": MAX_PDF_SCREENSHOT_BYTES,
+        },
         "remediation_roadmap": [
             {
                 "priority": index + 1,
@@ -540,6 +650,10 @@ def export(ctx: svc.Context, report_id: UUID, format: str, settings: Settings) -
         },
     }
     try:
+        if format == "pdf":
+            payload["pdf_images"] = _pdf_screenshot_assets(
+                ctx, record, frozen.snapshot_json, settings
+            )
         content = canonical(payload) if format == "json" else render(canonical(payload))
         ctx.session.refresh(ctx.user)
         if ctx.user.status != "active":

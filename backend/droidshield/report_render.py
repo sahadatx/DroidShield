@@ -9,7 +9,7 @@ import tempfile
 import threading
 import time
 
-MAX_INPUT = 2 * 1024**2 + 8192
+MAX_INPUT = 8 * 1024**2
 MAX_OUTPUT = 16 * 1024**2
 _CAPACITY = threading.BoundedSemaphore(2)
 

@@ -269,6 +269,8 @@ test("methodology shows pinned standards sources as safe external links",()=>{
 test("report snapshots remain escaped review content and protected exports use authenticated reads", async () => {
   assert.doesNotMatch(reportSnapshotMarkup({executive_summary:"<svg onload=evil>"}),/<svg/);
   assert.match(reportSnapshotMarkup({limitations:"Not run"}),/Not run/);
+  const screenshotReview=reportSnapshotMarkup({findings:[{title:"Reviewed screenshot",severity:"low",evidence:[{id:"evidence-id",title:"Access proof",text:"Sanitized screenshot digest attached.",attachment:{display_name:"screenshot.png",sha256:"a".repeat(64),file_size:512,pdf_inclusion:"embedded"}}]}]});
+  assert.match(screenshotReview,/Included in technical\/combined PDF/);assert.match(screenshotReview,/Download screenshot/);
   const attachment=reportSnapshotMarkup({findings:[{title:"Screenshot proof",severity:"low",evidence:[{id:"proof-id",title:"Sanitized screenshot",text:"PNG attachment metadata",attachment:{display_name:"screenshot.png",sha256:"a".repeat(64),file_size:42,media_type:"image/png"}}]}]});
   assert.match(attachment,/Download screenshot/);assert.match(attachment,/screenshot\.png/);assert.doesNotMatch(attachment,/<img|data:image/);
   let options;const api=createApi({getToken:()=>"memory-credential",fetcher:async(_url,received)=>{options=received;return new Response("%PDF-fixture",{headers:{"Content-Type":"application/pdf"}});}});
