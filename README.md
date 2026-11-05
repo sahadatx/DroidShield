@@ -73,6 +73,8 @@ Create a client and application project, record the approved targets/exclusions/
 - [HTTPS lab proxy](docs/proxy.md): dedicated debug CA, restricted CONNECT/GET/HEAD forwarding and guest loopback controls.
 - [API security testing](docs/api-security.md): exact scope, account references, pinned TLS transport, rate/window budgets and safe evidence.
 - [Client form specification](docs/client-form-plan.md): identity/contact fields and ownership rules.
+- [Deployment and recovery runbook](docs/operations.md): API readiness, worker supervision, upgrades and restore steps.
+- [Release readiness checklist](docs/release-checklist.md): source, runtime, integration and post-deploy gates.
 
 The local [API reference](http://127.0.0.1:8787/docs), [liveness](http://127.0.0.1:8787/health/live) and [readiness](http://127.0.0.1:8787/health/ready) are served by the same application. Readiness checks database/schema compatibility, not worker liveness, sandbox usability, external scanner availability or Android lab boot state. Authenticated `GET /api/v1/capabilities` exposes safe configuration flags, upload/session limits and opaque lab labels; it never returns scanner credentials, device serials or host paths.
 

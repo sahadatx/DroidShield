@@ -1,0 +1,104 @@
+name: Isolated integration smoke
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      mobsf:
+        description: Run the generated-fixture MobSF integration checks
+        type: boolean
+        required: true
+        default: false
+      android_emulator:
+        description: Run the generated-fixture disposable-emulator checks
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-smoke-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  mobsf:
+    name: Isolated MobSF service
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      ((github.event_name == 'schedule' && vars.DROIDSHIELD_MOBSF_SMOKE_ENABLED == 'true') ||
+       (github.event_name == 'workflow_dispatch' && inputs.mobsf))
+    runs-on: [self-hosted, linux, droidshield-mobsf-smoke]
+    timeout-minutes: 35
+    env:
+      DROIDSHIELD_MOBSF_TEST_URL: ${{ secrets.DROIDSHIELD_MOBSF_TEST_URL }}
+      DROIDSHIELD_MOBSF_TEST_KEY: ${{ secrets.DROIDSHIELD_MOBSF_TEST_KEY }}
+    steps:
+      - name: Check out trusted main branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Validate isolated service configuration
+        run: |
+          test -n "$DROIDSHIELD_MOBSF_TEST_URL"
+          test -n "$DROIDSHIELD_MOBSF_TEST_KEY"
+
+      - name: Install DroidShield test dependencies
+        run: python -m pip install -e '.[dev]'
+
+      - name: Exercise generated APK against isolated MobSF
+        run: >-
+          pytest -q
+          tests/test_mobsf.py::test_actual_isolated_mobsf_service_opt_in
+          tests/test_mobsf.py::test_actual_service_through_protected_upload_worker_and_scoped_api_opt_in
+
+  android-emulator:
+    name: Disposable Android emulator
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      ((github.event_name == 'schedule' && vars.DROIDSHIELD_EMULATOR_SMOKE_ENABLED == 'true') ||
+       (github.event_name == 'workflow_dispatch' && inputs.android_emulator))
+    runs-on: [self-hosted, linux, droidshield-emulator-smoke]
+    timeout-minutes: 45
+    env:
+      DROIDSHIELD_TEST_RUNTIME_APK: ${{ secrets.DROIDSHIELD_TEST_RUNTIME_APK }}
+      DROIDSHIELD_TEST_RUNTIME_DEVICE: ${{ secrets.DROIDSHIELD_TEST_RUNTIME_DEVICE }}
+      DROIDSHIELD_SANDBOX_EXECUTABLE: /usr/bin/bwrap
+      DROIDSHIELD_SANDBOX_PYTHON: /usr/bin/python3
+      DROIDSHIELD_ADB_EXECUTABLE: /usr/bin/adb
+    steps:
+      - name: Check out trusted main branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Validate dedicated offline lab configuration
+        run: |
+          test -n "$DROIDSHIELD_TEST_RUNTIME_APK"
+          test -f "$DROIDSHIELD_TEST_RUNTIME_APK"
+          test -n "$DROIDSHIELD_TEST_RUNTIME_DEVICE"
+          test -x "$DROIDSHIELD_SANDBOX_EXECUTABLE"
+          test -x "$DROIDSHIELD_SANDBOX_PYTHON"
+          test -x "$DROIDSHIELD_ADB_EXECUTABLE"
+
+      - name: Install DroidShield test dependencies
+        run: python -m pip install -e '.[dev]'
+
+      - name: Exercise package inspection and launch on the disposable emulator
+        run: >-
+          pytest -q
+          tests/test_dynamic.py::test_real_disposable_emulator_upload_to_runtime
+          -k "package_inspection or launch_observe"
