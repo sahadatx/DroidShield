@@ -3436,6 +3436,23 @@
       "IPAMetadata": {
         "additionalProperties": false,
         "properties": {
+          "architectures": {
+            "items": {
+              "enum": [
+                "x86",
+                "x86_64",
+                "arm",
+                "arm64",
+                "powerpc",
+                "powerpc64",
+                "other"
+              ],
+              "type": "string"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "type": "array"
+          },
           "artifact_format": {
             "const": "ipa",
             "type": "string"
@@ -3450,6 +3467,11 @@
               }
             ]
           },
+          "ats_exception_domain_count": {
+            "maximum": 256.0,
+            "minimum": 0.0,
+            "type": "integer"
+          },
           "build_number": {
             "anyOf": [
               {
@@ -3462,9 +3484,32 @@
               }
             ]
           },
+          "code_signature_command_present": {
+            "type": "boolean"
+          },
+          "embedded_entitlements_blob_present": {
+            "type": "boolean"
+          },
+          "embedded_provisioning_profile_present": {
+            "type": "boolean"
+          },
           "executable_present": {
             "const": true,
             "type": "boolean"
+          },
+          "file_type": {
+            "enum": [
+              "executable",
+              "dylib",
+              "bundle",
+              "other"
+            ],
+            "type": "string"
+          },
+          "load_command_count": {
+            "maximum": 4096.0,
+            "minimum": 0.0,
+            "type": "integer"
           },
           "minimum_os": {
             "anyOf": [
@@ -3525,10 +3570,17 @@
           "build_number",
           "minimum_os",
           "ats_allows_arbitrary_loads",
+          "ats_exception_domain_count",
           "url_scheme_count",
           "usage_description_count",
           "executable_present",
-          "signature_directory_present"
+          "signature_directory_present",
+          "embedded_provisioning_profile_present",
+          "architectures",
+          "file_type",
+          "load_command_count",
+          "code_signature_command_present",
+          "embedded_entitlements_blob_present"
         ],
         "type": "object"
       },

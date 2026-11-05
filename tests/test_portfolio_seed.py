@@ -43,10 +43,17 @@ IPA_METADATA = {
     "build_number": "1",
     "minimum_os": "15.0",
     "ats_allows_arbitrary_loads": False,
+    "ats_exception_domain_count": 0,
     "url_scheme_count": 0,
     "usage_description_count": 0,
     "executable_present": True,
     "signature_directory_present": False,
+    "embedded_provisioning_profile_present": False,
+    "architectures": ["arm64"],
+    "file_type": "executable",
+    "load_command_count": 0,
+    "code_signature_command_present": False,
+    "embedded_entitlements_blob_present": False,
 }
 
 

@@ -15,7 +15,7 @@ The supplied service descriptions are mapped one by one in the
 | --- | --- | --- |
 | Android APK static testing | Protected APK intake; isolated manifest/DEX engines; administrator-configured MobSF adapter; normalized unreviewed indicators; sanitized text and protected PNG evidence | Context, source review, actual library versions/advisories, exploitability and evidence review |
 | AAB static testing | Protected AAB intake; bounded base-module protobuf manifest identity/configuration; exact SHA-256 | Generate the appropriate APKs in the approved build lab for automated Android execution; record split/module and source review coverage |
-| iOS IPA static testing | Protected IPA intake; bounded binary/XML Info.plist identity, build/OS labels, ATS flag, URL-scheme count, main-executable/signature-directory presence | Decompilation, entitlement/signature validity, Mach-O protections, secrets, libraries and source review with approved external tools |
+| iOS IPA static testing | Protected IPA intake; bounded binary/XML Info.plist identity, build/OS labels, ATS flag and exception-domain count, URL-scheme count, Mach-O architecture/file-type/load-command markers, entitlement-blob/signature-directory/provisioning-profile presence | Decompilation, entitlement values/signature validity, Mach-O protections, secrets, libraries and source review with approved external tools |
 | Android runtime | Dedicated disposable emulator; package/launch, pinned fixed Frida counters and restricted HTTPS interception | Rooted physical-device coverage, Objection/Burp workflows, complete runtime instrumentation and interpretation |
 | iOS runtime | Platform-specific manual engagement, tool/device/version provenance, protected evidence and coverage | Authorized iOS device/macOS lab, jailbreak setup where appropriate, Frida/Objection/Burp execution |
 | Local storage | Android/iOS procedure for Keychain/Keystore, SQLite, preferences/plist, files, caches, logs, backups and incidental disclosure | Device inspection with synthetic data and verified protection/access observations |
@@ -31,7 +31,9 @@ Framework names such as Kotlin, Flutter, React Native, Kony or Volt MX describe
 application technology, not guaranteed inspection coverage. Packed/encrypted
 code, native libraries, cross-platform runtime internals and unavailable source
 must be stated in the engagement's limitations. IPA intake does not decrypt an
-App Store binary, and a signature directory does not establish signature validity.
+App Store binary. Entitlement-blob, signature-directory, provisioning-profile
+and code-signature load-command presence are metadata only; none establishes
+signature validity, entitlement contents or binary protection.
 
 ## Operational sequence
 

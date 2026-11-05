@@ -4,6 +4,16 @@
 
 This document describes protected APK storage, intake and the original manifest engine. The current application also delivers the [frontend](frontend.md), isolated [DEX engine](dex-analysis.md), [MobSF adapter](mobsf.md), controlled [dynamic lab](dynamic-lab.md), fixed [Frida observer](frida.md), restricted [HTTPS proxy](proxy.md) and [API baseline worker](api-security.md). Those engines retain the authorization and immutable artifact boundaries described here. Full dependency analysis remains outside the automated engines; analyst verification, reports and retesting use the implemented [analyst workflow](analyst-workflow.md).
 
+Cross-platform intake runs through the same restricted Linux sandbox. IPA review
+returns bounded identity/configuration fields, ATS exception-domain counts,
+Mach-O architecture/file-type/load-command indicators, and signature-directory
+or provisioning-profile presence. It checks a bounded code-signature superblob
+only to record whether an entitlement blob exists; it never returns the values.
+It does not return exception-domain names or profile contents, validate
+signatures, or inspect executable code/signature contents. The code-signature
+command is a header marker only. IPA/AAB records support analyst-led work; they
+do not enter the automated Android APK engines.
+
 An automated indicator starts **Unreviewed**. Successful processing moves an assessment to **Needs Review**, not Completed or Confirmed. Findings review, report delivery and retesting use separate authenticated analyst/reviewer operations; scanner success never grants those approvals.
 
 ## Host and storage setup

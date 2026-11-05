@@ -17,7 +17,60 @@ from tests.test_uploads import upload_api as _upload_api
 upload_api = _upload_api
 
 
-def ipa_bytes(bundle="com.example.mobile-app", *, binary=True, extra=None, version="1.0"):
+def macho_thin(*, cpu_type=0x0100000C, file_type=2, commands=(), trailing_data=b""):
+    command_bytes = b"".join(commands)
+    return (
+        struct.pack(
+            "<IIIIIIII",
+            0xFEEDFACF,
+            cpu_type,
+            0,
+            file_type,
+            len(commands),
+            len(command_bytes),
+            0,
+            0,
+        )
+        + command_bytes
+        + trailing_data
+    )
+
+
+def macho_fat(slices):
+    offset = 8 + len(slices) * 20
+    table, payloads = [], []
+    for cpu_type, content in slices:
+        table.append(struct.pack(">iiIII", cpu_type, 0, offset, len(content), 0))
+        payloads.append(content)
+        offset += len(content)
+    return b"\xca\xfe\xba\xbe" + struct.pack(">I", len(slices)) + b"".join(table + payloads)
+
+
+def macho_fat_with_bad_offset():
+    result = bytearray(macho_fat([(0x0100000C, macho_thin())]))
+    struct.pack_into(">I", result, 16, 0)
+    return bytes(result)
+
+
+def macho_with_entitlements_blob():
+    entitlement_blob = struct.pack(">II", 0xFADE7171, 8)
+    signature_blob = (
+        struct.pack(">III", 0xFADE0CC0, 28, 1) + struct.pack(">II", 5, 20) + entitlement_blob
+    )
+    data_offset = 32 + 16
+    command = struct.pack("<IIII", 0x1D, 16, data_offset, len(signature_blob))
+    return macho_thin(commands=[command], trailing_data=signature_blob)
+
+
+def ipa_bytes(
+    bundle="com.example.mobile-app",
+    *,
+    binary=True,
+    extra=None,
+    version="1.0",
+    executable_data=None,
+    info_overrides=None,
+):
     output = io.BytesIO()
     info = {
         "CFBundlePackageType": "APPL",
@@ -31,6 +84,7 @@ def ipa_bytes(bundle="com.example.mobile-app", *, binary=True, extra=None, versi
         "NSCameraUsageDescription": "Do not expose this private purpose text",
         "internal_api_key": "not-returned-private-value",
     }
+    info.update(info_overrides or {})
     with zipfile.ZipFile(output, "w") as archive:
         archive.writestr(
             "Payload/Example.app/Info.plist",
@@ -38,7 +92,7 @@ def ipa_bytes(bundle="com.example.mobile-app", *, binary=True, extra=None, versi
         )
         archive.writestr(
             "Payload/Example.app/Example",
-            struct.pack("<IIIIIIII", 0xFEEDFACF, 0x0100000C, 0, 2, 0, 0, 0, 0),
+            executable_data or macho_thin(),
         )
         for name, data in extra or []:
             archive.writestr(name, data)
@@ -146,6 +200,12 @@ def test_ipa_private_intake_preserves_hash_identity_and_safe_metadata(upload_api
     assert detail["metadata"]["ats_allows_arbitrary_loads"] is True
     assert detail["metadata"]["package_name"] == project["package_id"]
     assert detail["metadata"]["build_number"] == "42"
+    assert detail["metadata"]["architectures"] == ["arm64"]
+    assert detail["metadata"]["file_type"] == "executable"
+    assert detail["metadata"]["load_command_count"] == 0
+    assert detail["metadata"]["code_signature_command_present"] is False
+    assert detail["metadata"]["embedded_entitlements_blob_present"] is False
+    assert detail["metadata"]["embedded_provisioning_profile_present"] is False
     assert "private-value" not in str(detail) and "private purpose" not in str(detail)
     downloaded = api.get(f"/artifacts/{item['id']}/download")
     assert downloaded.content == content
@@ -171,6 +231,70 @@ def test_aab_protobuf_manifest_intake_is_not_automated_apk_execution(upload_api)
         api.post(f"/assessments/{assessment['id']}/queue", {"revision": current["revision"]}), 409
     )
     assert expect(api.get(f"/assessments/{assessment['id']}/findings"))["total"] == 0
+
+
+def test_ipa_reports_macho_and_configuration_indicators_without_sensitive_values(upload_api):
+    api = upload_api
+    _, assessment = draft(api, "ios")
+    content = ipa_bytes(
+        info_overrides={
+            "NSAppTransportSecurity": {
+                "NSAllowsArbitraryLoads": False,
+                "NSExceptionDomains": {
+                    "private.example.invalid": {"NSExceptionAllowsInsecureHTTPLoads": True}
+                },
+            }
+        },
+        executable_data=macho_thin(commands=[struct.pack("<IIII", 0x1D, 16, 0, 0)]),
+        extra=[
+            ("Payload/Example.app/embedded.mobileprovision", b"opaque profile bytes"),
+            ("Payload/Example.app/_CodeSignature/CodeResources", b"opaque signature bytes"),
+        ],
+    )
+    artifact = expect(put(api, assessment, content, "indicators.ipa"), 201)
+    metadata = expect(api.get(f"/artifacts/{artifact['id']}"))["metadata"]
+    assert metadata["ats_exception_domain_count"] == 1
+    assert metadata["embedded_provisioning_profile_present"] is True
+    assert metadata["signature_directory_present"] is True
+    assert metadata["code_signature_command_present"] is True
+    assert metadata["embedded_entitlements_blob_present"] is False
+    assert metadata["architectures"] == ["arm64"]
+    assert metadata["load_command_count"] == 1
+    assert "private.example.invalid" not in str(metadata)
+    assert "opaque profile bytes" not in str(metadata)
+
+
+def test_ipa_detects_entitlement_blob_presence_without_returning_its_values(upload_api):
+    api = upload_api
+    _, assessment = draft(api, "ios")
+    artifact = expect(
+        put(
+            api,
+            assessment,
+            ipa_bytes(executable_data=macho_with_entitlements_blob()),
+            "entitlements.ipa",
+        ),
+        201,
+    )
+    metadata = expect(api.get(f"/artifacts/{artifact['id']}"))["metadata"]
+    assert metadata["embedded_entitlements_blob_present"] is True
+    assert "application-identifier" not in str(metadata)
+
+
+def test_ipa_fat_macho_reports_bounded_architecture_set(upload_api):
+    api = upload_api
+    _, assessment = draft(api, "ios")
+    universal = macho_fat(
+        [
+            (0x01000007, macho_thin(cpu_type=0x01000007)),
+            (0x0100000C, macho_thin(cpu_type=0x0100000C)),
+        ]
+    )
+    artifact = expect(
+        put(api, assessment, ipa_bytes(executable_data=universal), "universal.ipa"), 201
+    )
+    metadata = expect(api.get(f"/artifacts/{artifact['id']}"))["metadata"]
+    assert metadata["architectures"] == ["x86_64", "arm64"]
 
 
 def test_aab_long_version_code_is_preserved_through_artifact_storage(upload_api):
@@ -210,6 +334,11 @@ def test_generic_apk_upload_preserves_legacy_metadata_and_idempotency(upload_api
         ("traversal.ipa", ipa_bytes(extra=[("../escape", b"x")])),
         ("duplicate.ipa", ipa_bytes(extra=[("Payload/Second.app/Info.plist", b"x")])),
         ("corrupt.ipa", b"not an archive"),
+        (
+            "bad-macho.ipa",
+            ipa_bytes(executable_data=macho_thin(commands=[struct.pack("<II", 0x1D, 4)])),
+        ),
+        ("bad-fat.ipa", ipa_bytes(executable_data=macho_fat_with_bad_offset())),
         ("corrupt.aab", aab_bytes(manifest=b"\x0a\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff")),
     ],
 )

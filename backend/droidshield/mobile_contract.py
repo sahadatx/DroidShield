@@ -24,15 +24,24 @@ class IPAMetadata(ContractModel):
     build_number: str | None = Field(max_length=128, pattern=r"^[A-Za-z0-9_.+() -]+$")
     minimum_os: str | None = Field(max_length=128, pattern=r"^[A-Za-z0-9_.+() -]+$")
     ats_allows_arbitrary_loads: StrictBool | None
+    ats_exception_domain_count: StrictInt = Field(ge=0, le=256)
     url_scheme_count: StrictInt = Field(ge=0, le=65536)
     usage_description_count: StrictInt = Field(ge=0, le=4096)
     executable_present: Literal[True]
     signature_directory_present: StrictBool
+    embedded_provisioning_profile_present: StrictBool
+    architectures: list[
+        Literal["x86", "x86_64", "arm", "arm64", "powerpc", "powerpc64", "other"]
+    ] = Field(min_length=1, max_length=32)
+    file_type: Literal["executable", "dylib", "bundle", "other"]
+    load_command_count: StrictInt = Field(ge=0, le=4096)
+    code_signature_command_present: StrictBool
+    embedded_entitlements_blob_present: StrictBool
 
 
 class MobileIntakeResult(ContractModel):
-    schema_version: Literal[4]
-    engine_version: Literal["droidshield-mobile-intake-2"]
+    schema_version: Literal[5]
+    engine_version: Literal["droidshield-mobile-intake-3"]
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     file_size: StrictInt = Field(gt=0)
     metadata: IPAMetadata | AABMetadata
@@ -49,6 +58,6 @@ class MobileIntakeResult(ContractModel):
     @field_validator("schema_version", mode="before")
     @classmethod
     def exact_version(cls, value):
-        if type(value) is not int or value != 4:
+        if type(value) is not int or value != 5:
             raise ValueError("Unknown intake protocol")
         return value

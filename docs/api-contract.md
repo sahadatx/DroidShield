@@ -446,8 +446,15 @@ configurations reject both application-target schemes.
 limits but accepts APK, AAB or IPA. `/apk` remains APK-only. Artifact responses
 include safe `platform` and `artifact_format`; detail metadata is an allowlisted
 platform-specific union. AAB parses only the base protobuf manifest; IPA parses
-Info.plist and checks main-executable presence/magic. No signature, entitlement,
-full binary, source, library or runtime security result is inferred from intake.
+bounded Info.plist identity/configuration, counts ATS exception domains without
+returning their names, and inspects bounded main-executable Mach-O headers and
+load-command markers for architecture, file type, command count and the presence
+of a code-signature command. It records whether a bounded code-signature
+superblob contains an entitlement blob, without returning entitlement values.
+Signature-directory and embedded provisioning-profile presence are also
+recorded only. It does not verify signatures, inspect code/signature contents,
+or infer binary protections, source, library or runtime security results from
+intake.
 Automated queueing/worker claims accept Android APKs only; use manual engagements
 for IPA/AAB analyst work.
 
