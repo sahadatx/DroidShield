@@ -494,7 +494,7 @@ def test_real_versioned_migration_protects_target_and_published_result(tmp_path)
         with engine.connect() as connection:
             assert (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "0012_overview_risk_trends"
+                == "0013_authorization_attachments"
             )
             assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
             names = (

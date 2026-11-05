@@ -106,6 +106,9 @@ The `code` and details vary by error. Field paths can be mapped to inline valida
 | `POST /api/v1/projects/{id}/authorizations` | Create pending authorization | Analyst/admin, idempotency key |
 | `POST /api/v1/authorizations/{id}/verify` | Verify authorization | ADMIN attestation and revision |
 | `POST /api/v1/authorizations/{id}/revoke` | Revoke authorization | ADMIN, revision and reason |
+| `GET /api/v1/authorizations/{id}/attachments` | List supporting authorization documents | Project-scoped metadata only; no storage reference |
+| `POST /api/v1/authorizations/{id}/attachments` | Upload supporting authorization document | Writer, pending authorization, idempotency; bounded PDF/PNG/JPEG |
+| `GET /api/v1/authorization-attachments/{id}/download` | Download supporting authorization document | Current project access and stored-byte integrity verification |
 | `GET /api/v1/assessments` | List accessible Assessments | Paginated; name search and exact client, project, type, and status filters |
 | `POST /api/v1/assessments` | Create Assessment record | Analyst/admin, idempotency key |
 | `GET /api/v1/assessments/{id}` | Assessment detail | Scoped visibility |
@@ -161,7 +164,7 @@ Both settings routes require an active ADMIN in the authenticated workspace. `GE
 
 Responses include `workspace_id`, current workspace name, the preference fields, revision, `updated_at` and `secret_references` booleans for the MobSF service, API secret store, Frida runtime and proxy certificate authority. These booleans indicate configured values only; the API never returns secret contents, service URLs, filesystem paths, raw references or engine controls. Runtime integration settings remain administrator-managed on the server. Successful changes create an immutable audit event with the actor, resource, revision and changed field names—never the submitted values.
 
-There is no hard-delete endpoint. Archive preserves resource identity and historical relationships. Static engines, controlled Dynamic execution, exact-target API execution and connected frontend pages are delivered. Full manual engagement records and email/password browser sessions are implemented; automatic Full execution remains outside the execution surface. Database readiness expects Alembic revision `0012_overview_risk_trends`; it does not probe sandbox availability, scanner/lab health or a running worker. The application serves its frontend at `/` and only the two named script/style files under `/assets`; it does not expose a directory or protected storage mount.
+There is no hard-delete endpoint. Archive preserves resource identity and historical relationships. Static engines, controlled Dynamic execution, exact-target API execution and connected frontend pages are delivered. Full manual engagement records and email/password browser sessions are implemented; automatic Full execution remains outside the execution surface. Database readiness expects Alembic revision `0013_authorization_attachments`; it does not probe sandbox availability, scanner/lab health or a running worker. The application serves its frontend at `/` and only the two named script/style files under `/assets`; it does not expose a directory or protected storage mount.
 
 ## 3. Client request and response fields
 
@@ -234,7 +237,7 @@ Targets are `package:com.example.app` or exact HTTPS URLs. Wildcards, fragment i
 
 Creating a record does not verify the underlying evidence. Verification is an ADMIN attestation that the referenced signed authorization evidence was reviewed: `POST /authorizations/{id}/verify` with `{"revision": 1}`. Only pending, unexpired records can be verified. Revocation uses `{"revision": 2, "reason": "Authorization withdrawn"}` and cancels linked queued/running Assessment/job records in the same transaction. The active worker observes cancellation/current authorization and discards unpublished output. Both require idempotency headers. Status values are `pending`, `verified` and `revoked`; expiry is additionally checked against the validity window. Responses include scope, evidence reference, notes, common mutable metadata, `verified_by`, `verified_at`, `revoked_at` and `revocation_reason`.
 
-The current evidence reference is a pointer for review, not an uploaded or cryptographically validated evidence document. A future protected evidence API must verify storage ownership and support document integrity. No target is actively contacted by authorization creation or verification.
+The authorization `evidence_ref` remains a reference label; it is not treated as a document or cryptographically validated proof. Supporting approval files can be uploaded separately while the record is pending. The protected attachment API accepts one PDF, PNG or JPEG up to 8 MiB, hashes the received bytes, stores them under an opaque private reference and exposes only allowlisted metadata. A distinct authenticated download verifies size and SHA-256, always returns an opaque attachment with `nosniff` and `no-store`, and never renders or parses the document. Attachments are immutable and project-scoped; uploads stop after verification or revocation. ADMIN verification remains an independent human attestation. No target is actively contacted by authorization creation, upload or verification.
 
 ## 6. Assessment record and transitions
 

@@ -37,6 +37,7 @@ from droidshield.api_common import (
     user_view,
 )
 from droidshield.assessment_api import router as assessment_router
+from droidshield.authorization_attachment_api import router as authorization_attachment_router
 from droidshield.directory_api import router as directory_router
 from droidshield.evidence_api import router as evidence_router
 from droidshield.identity_api import router as identity_router
@@ -47,5 +48,6 @@ router.include_router(identity_router)
 router.include_router(access_router)
 router.include_router(directory_router)
 router.include_router(assessment_router)
+router.include_router(authorization_attachment_router)
 router.include_router(evidence_router)
 router.include_router(settings_router)

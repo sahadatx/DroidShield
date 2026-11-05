@@ -40,8 +40,8 @@ Each worker accepts `--once` to process at most one eligible job. Queue records 
 ## Included
 
 - A responsive, accessible browser workspace: Overview, Clients, Projects, Assessments, APK Analysis, Dynamic Testing, API Security, Findings, Methodology, Retesting, Reports, administrator Audit Logs and read-only Settings/capabilities. Forms, searches, filters, pagination, revision conflicts, uploads and downloads use real authenticated APIs. An ADMIN-only settings API provides safe workspace/report presentation preferences; browser editing follows separately.
-- Strict schemas, relational constraints, and versioned Alembic migrations through `0012_overview_risk_trends`; salted scrypt password hashes, database-shared login throttling, persistent HttpOnly browser sessions, CSRF checks and optional hashed API credentials; role, workspace and linked-project checks; optimistic revisions, idempotency and sanitized audit history.
-- Client/project create, edit and archive; exact scope authorizations with validity windows, administrator verification/revocation and independent worker rechecks.
+- Strict schemas, relational constraints, and versioned Alembic migrations through `0013_authorization_attachments`; salted scrypt password hashes, database-shared login throttling, persistent HttpOnly browser sessions, CSRF checks and optional hashed API credentials; role, workspace and linked-project checks; optimistic revisions, idempotency and sanitized audit history.
+- Client/project create, edit and archive; exact scope authorizations with validity windows, protected immutable supporting documents, administrator verification/revocation and independent worker rechecks.
 - Bounded multipart APK/AAB/IPA intake, sandboxed binary/protobuf manifest and Info.plist inspection, server-calculated SHA-256, private opaque storage, immutable project-scoped deduplication and integrity-verified downloads.
 - Isolated manifest analysis and actual bounded DEX instruction inspection. DEX candidates include recognized crypto/WebView API references and secret-like literal categories; raw literals and credentials are never published. See [DEX coverage and limits](docs/dex-analysis.md).
 - An administrator-configured MobSF engine option that normalizes allowed results rather than returning arbitrary scanner content. External scanner deployment is its own trusted processing boundary; configuration does not prove that a service is reachable or securely isolated.
@@ -123,7 +123,7 @@ APKs are untrusted. Local manifest/DEX processing runs in a network-disabled Lin
 
 ## Verification
 
-The [verification record](docs/verification.md) contains dated test snapshots for versions 0.3–0.5; each result describes that recorded setup and is not a claim that every later commit or deployment was re-tested. The checked-in migration head is `0012_overview_risk_trends`. The version 0.5 record's note about the default local workspace being at `0006_reports` is historical and refers only to that workspace at the time; migrate a development database with `droidshield migrate`, and do not infer a deployment database's revision from the note. Frida, proxy and API runbooks document their test coverage and actual integration results separately from simulated fault tests.
+The [verification record](docs/verification.md) contains dated test snapshots for versions 0.3–0.5; each result describes that recorded setup and is not a claim that every later commit or deployment was re-tested. The checked-in migration head is `0013_authorization_attachments`. The version 0.5 record's note about the default local workspace being at `0006_reports` is historical and refers only to that workspace at the time; migrate a development database with `droidshield migrate`, and do not infer a deployment database's revision from the note. Frida, proxy and API runbooks document their test coverage and actual integration results separately from simulated fault tests.
 
 ```sh
 pytest

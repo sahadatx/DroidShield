@@ -329,6 +329,44 @@ class Authorization(IdentityMixin, WorkspaceMixin, CreatedMixin, UpdatedMixin, R
     )
 
 
+class AuthorizationAttachment(IdentityMixin, WorkspaceMixin, CreatedMixin, Base):
+    """Private, immutable client approval document linked to one authorization."""
+
+    __tablename__ = "authorization_attachments"
+
+    project_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True))
+    authorization_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True))
+    storage_ref: Mapped[str] = mapped_column(String(96))
+    sha256: Mapped[str] = mapped_column(String(64))
+    file_size: Mapped[int] = mapped_column(Integer)
+    media_type: Mapped[str] = mapped_column(String(32))
+    display_name: Mapped[str] = mapped_column(String(120))
+    created_by: Mapped[UUID] = mapped_column(Uuid(as_uuid=True))
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id", name="uq_authorization_attachments_workspace_id"),
+        ForeignKeyConstraint(
+            ["workspace_id", "project_id", "authorization_id"],
+            ["authorizations.workspace_id", "authorizations.project_id", "authorizations.id"],
+            ondelete="RESTRICT",
+        ),
+        user_reference("created_by"),
+        CheckConstraint("file_size BETWEEN 1 AND 8388608", name="file_size"),
+        CheckConstraint("length(trim(storage_ref)) > 0", name="storage_ref_required"),
+        CheckConstraint(_sha256_check, name="sha256_lower_hex"),
+        CheckConstraint(
+            "media_type IN ('application/pdf', 'image/png', 'image/jpeg')", name="media_type"
+        ),
+        CheckConstraint("length(trim(display_name)) BETWEEN 1 AND 120", name="display_name"),
+        Index(
+            "ix_authorization_attachments_owner",
+            "workspace_id",
+            "project_id",
+            "authorization_id",
+        ),
+    )
+
+
 class Assessment(IdentityMixin, WorkspaceMixin, CreatedMixin, UpdatedMixin, RevisionMixin, Base):
     __tablename__ = "assessments"
 

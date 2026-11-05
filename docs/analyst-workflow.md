@@ -12,7 +12,9 @@ workers keep their existing boundaries.
 
 Create a Project with the correct Android package or iOS bundle identity and
 platform. Link an administrator-verified authorization containing exact targets,
-exclusions and a valid test window. Upload the tested application through protected
+exclusions and a valid test window. A pending authorization may carry private,
+immutable supporting approval documents in PDF, PNG or JPEG format; upload them
+before an administrator independently verifies the authorization. Upload the tested application through protected
 intake; non-API manual work requires its immutable artifact and matching identity.
 An API-only assessment uses exact approved HTTPS endpoints and may omit an
 application artifact.
@@ -99,6 +101,22 @@ return as an opaque `application/octet-stream` attachment with `nosniff` and
 evidence and attachment UPDATE/DELETE; PostgreSQL also rejects TRUNCATE. An orphan
 object left by a crashed database transaction remains private; it is not a public
 download.
+
+Authorization supporting files use the separate `authorization-attachments/`
+directory. A writer can upload one PDF, PNG or JPEG up to 8 MiB to a pending
+authorization; project viewers can list and download files when they have current
+project access. The server validates the filename, declared type and basic file
+signature, but does not parse, render, scan or certify the document. It stores the
+actual SHA-256 with immutable metadata and excludes object references from API
+responses and audit events. `GET /authorizations/{id}/attachments` lists safe
+metadata, while `GET /authorization-attachments/{id}/download` verifies stored
+size and digest and returns a forced attachment with `nosniff` and `no-store`.
+Uploads are unavailable after verification or revocation; the administrator's
+independent verification decision is not inferred from the presence of a file.
+The original client filename is discarded; responses use a generic filename
+based on the validated extension.
+The original client filename is discarded and responses use a generic name based
+on the validated extension.
 
 `POST /assessments/{id}/findings` creates an Unreviewed/Open finding with bounded
 narratives, severity, calculated CVSS v4.0 or v3.1 base vector/score, pinned MASVS

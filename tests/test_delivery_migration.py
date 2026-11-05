@@ -10,7 +10,13 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 import droidshield
-from droidshield.models import Assessment, AssessmentEvidence, User
+from droidshield.models import (
+    Assessment,
+    AssessmentEvidence,
+    Authorization,
+    AuthorizationAttachment,
+    User,
+)
 from tests.test_analysis_migration import migrated_analysis as _migrated_analysis
 from tests.test_concurrency import seed_queueable_assessment
 
@@ -85,3 +91,40 @@ def test_migrated_evidence_rejects_mutation_and_history_losing_downgrade(migrate
         command.downgrade(config(engine), "0004_api_security")
     with Session(engine) as session:
         assert session.scalar(select(func.count()).select_from(AssessmentEvidence)) == 1
+
+
+def test_authorization_attachments_are_immutable_and_protect_migration_history(migrated_analysis):
+    engine = migrated_analysis
+    user_id, authorization_id, _assessment_id = seed_queueable_assessment(engine)
+    with Session(engine) as session:
+        actor = session.get(User, user_id)
+        permit = session.get(Authorization, authorization_id)
+        record = AuthorizationAttachment(
+            workspace_id=actor.workspace_id,
+            project_id=permit.project_id,
+            authorization_id=permit.id,
+            storage_ref="authdoc:" + "a" * 32,
+            sha256="b" * 64,
+            file_size=32,
+            media_type="application/pdf",
+            display_name="approval.pdf",
+            created_by=actor.id,
+        )
+        session.add(record)
+        session.commit()
+
+    for statement in (
+        "UPDATE authorization_attachments SET display_name='changed.pdf'",
+        "DELETE FROM authorization_attachments",
+    ):
+        with engine.begin() as connection:
+            with pytest.raises(DBAPIError):
+                connection.execute(text(statement))
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as connection:
+            with pytest.raises(DBAPIError):
+                connection.execute(text("TRUNCATE authorization_attachments"))
+    with pytest.raises(RuntimeError, match="Refusing"):
+        command.downgrade(config(engine), "0012_overview_risk_trends")
+    with Session(engine) as session:
+        assert session.scalar(select(func.count()).select_from(AuthorizationAttachment)) == 1

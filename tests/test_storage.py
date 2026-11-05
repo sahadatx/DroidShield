@@ -101,6 +101,22 @@ def test_cleanup_retains_referenced_and_fresh_objects(tmp_path):
     assert not pending.path.exists()
 
 
+def test_custom_private_namespace_keeps_reference_checks_and_cleanup(tmp_path):
+    store = Storage(
+        tmp_path / "authorization-attachments", reference_prefix="authdoc", object_suffix=".bin"
+    )
+    staged = store.stage(io.BytesIO(b"approval bytes"), 100)
+    reference = store.publish(staged)
+    staged.close()
+    path = store._path(reference)
+    old = time.time() - 7200
+    os.utime(path, (old, old))
+    assert store.clean_orphans({reference}, time.time() - 3600) == 0
+    assert path.exists()
+    assert store.clean_orphans(set(), time.time() - 3600) == 1
+    assert not path.exists()
+
+
 @pytest.mark.parametrize(
     "path", ["/usr/local/share/droidshield", "/usr/lib/droidshield", "/lib/droidshield"]
 )

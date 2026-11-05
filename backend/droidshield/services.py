@@ -23,6 +23,11 @@ from droidshield.assessment_services import (
     verify_authorization,
 )
 from droidshield.auth import utc
+from droidshield.authorization_delivery import (
+    authorization_attachment,
+    authorization_attachments,
+    create_authorization_attachment,
+)
 from droidshield.directory_services import (
     create_client,
     create_project,
@@ -74,6 +79,8 @@ __all__ = [
     "ProjectAccess",
     "User",
     "assessment",
+    "authorization_attachment",
+    "authorization_attachments",
     "audit",
     "authorization",
     "cancel_assessment",
@@ -83,6 +90,7 @@ __all__ = [
     "client_query",
     "conflict",
     "create_assessment",
+    "create_authorization_attachment",
     "create_authorization",
     "create_client",
     "create_project",

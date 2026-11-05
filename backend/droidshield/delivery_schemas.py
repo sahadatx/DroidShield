@@ -86,6 +86,18 @@ class EvidenceAttachmentOut(ResponseModel):
     display_name: Literal["screenshot.png"]
 
 
+class AuthorizationAttachmentOut(ResponseModel):
+    id: UUID
+    authorization_id: UUID
+    project_id: UUID
+    display_name: Annotated[str, StringConstraints(min_length=1, max_length=120)]
+    sha256: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+    file_size: Annotated[int, Field(strict=True, ge=1, le=8 * 1024 * 1024)]
+    media_type: Literal["application/pdf", "image/png", "image/jpeg"]
+    created_by: UUID
+    created_at: datetime
+
+
 class EvidenceOut(ResponseModel):
     id: UUID
     project_id: UUID

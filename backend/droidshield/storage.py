@@ -31,7 +31,19 @@ class StagedFile:
 
 
 class Storage:
-    def __init__(self, root: Path | str):
+    def __init__(
+        self,
+        root: Path | str,
+        *,
+        reference_prefix: str = "apk",
+        object_suffix: str = ".apk",
+    ):
+        if not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", reference_prefix) or not re.fullmatch(
+            r"\.[a-z0-9]{1,8}", object_suffix
+        ):
+            raise StorageError("storage_unavailable")
+        self.reference_prefix = reference_prefix
+        self.object_suffix = object_suffix
         self.root = Path(root).absolute()
         visible_runtime = {Path(path).resolve() for path in ("/usr", "/lib", "/lib64")}
         if any(self.root.resolve().is_relative_to(path) for path in visible_runtime):
@@ -50,7 +62,9 @@ class Storage:
             raise StorageError() from exc
 
     def stage(self, source: BinaryIO, max_bytes: int) -> StagedFile:
-        descriptor, name = tempfile.mkstemp(prefix="upload-", suffix=".apk", dir=self.staging)
+        descriptor, name = tempfile.mkstemp(
+            prefix="upload-", suffix=self.object_suffix, dir=self.staging
+        )
         path = Path(name)
         digest = hashlib.sha256()
         size = 0
@@ -76,12 +90,12 @@ class Storage:
             raise
 
     def _path(self, storage_ref: str) -> Path:
-        if not re.fullmatch(r"apk:[0-9a-f]{32}", storage_ref):
+        if not re.fullmatch(rf"{re.escape(self.reference_prefix)}:[0-9a-f]{{32}}", storage_ref):
             raise StorageError("artifact_integrity_failed")
-        return self.objects / (storage_ref[4:] + ".apk")
+        return self.objects / (storage_ref[len(self.reference_prefix) + 1 :] + self.object_suffix)
 
     def publish(self, staged: StagedFile) -> str:
-        reference = "apk:" + uuid4().hex
+        reference = self.reference_prefix + ":" + uuid4().hex
         path = self._path(reference)
         try:
             # link is exclusive and atomic on this filesystem. Staging is private
@@ -143,9 +157,9 @@ class Storage:
         """Trusted CLI maintenance; never remove a referenced object or fresh upload."""
         count = 0
         for path in self.objects.iterdir():
-            if not re.fullmatch(r"[0-9a-f]{32}\.apk", path.name):
+            if not re.fullmatch(rf"[0-9a-f]{{32}}{re.escape(self.object_suffix)}", path.name):
                 continue
-            if "apk:" + path.stem in referenced:
+            if self.reference_prefix + ":" + path.name[: -len(self.object_suffix)] in referenced:
                 continue
             if not path.is_symlink() and path.is_file() and path.stat().st_mtime < older_than:
                 path.unlink()

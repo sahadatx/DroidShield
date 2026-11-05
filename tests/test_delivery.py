@@ -18,6 +18,7 @@ from droidshield.models import (
     AppArtifact,
     AssessmentEvidence,
     AuditEvent,
+    AuthorizationAttachment,
     EvidenceAttachment,
     Finding,
     Retest,
@@ -517,6 +518,106 @@ def test_screenshot_evidence_rejects_non_png_and_requires_sanitization(delivery_
         headers=api.headers("analyst", "invalid-screenshot-2"),
     )
     expect(unconfirmed, 422)
+
+
+def test_authorization_documents_are_private_immutable_and_scoped(delivery_api):
+    api = delivery_api
+    project = make_project(api)
+    permit = make_authorization(api, project, verify=False)
+    document = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
+    endpoint = f"/authorizations/{permit['id']}/attachments"
+
+    response = api.client.post(
+        PREFIX + endpoint,
+        files={"file": ("signed-approval.pdf", document, "application/pdf")},
+        headers=api.headers("admin", "authorization-document-1"),
+    )
+    record = expect(response, 201)
+    assert record["display_name"] == "authorization-document.pdf"
+    assert record["media_type"] == "application/pdf"
+    assert record["file_size"] == len(document)
+    assert record["sha256"] == hashlib.sha256(document).hexdigest()
+    assert "storage_ref" not in record
+
+    listing = expect(api.get(endpoint))
+    assert listing["total"] == 1
+    assert listing["items"][0]["id"] == record["id"]
+    downloaded = api.get(f"/authorization-attachments/{record['id']}/download")
+    assert downloaded.status_code == 200
+    assert downloaded.content == document
+    assert downloaded.headers["content-type"] == "application/octet-stream"
+    assert downloaded.headers["x-content-type-options"] == "nosniff"
+    assert downloaded.headers["cache-control"] == "no-store"
+    assert downloaded.headers["x-content-sha256"] == record["sha256"]
+    assert record["id"] in downloaded.headers["content-disposition"]
+
+    grant(api, project, "viewer")
+    assert api.get(endpoint, role="viewer").status_code == 200
+    expect(
+        api.client.post(
+            PREFIX + endpoint,
+            files={"file": ("signed-approval.pdf", document, "application/pdf")},
+            headers=api.headers("viewer", "authorization-document-viewer"),
+        ),
+        403,
+    )
+    expect(api.get(f"/authorization-attachments/{record['id']}/download", role="other_admin"), 404)
+
+    replay = api.client.post(
+        PREFIX + endpoint,
+        files={"file": ("signed-approval.pdf", document, "application/pdf")},
+        headers=api.headers("admin", "authorization-document-1"),
+    )
+    assert expect(replay, 201)["id"] == record["id"]
+
+    with Session(api.engine) as session:
+        item = session.get(AuthorizationAttachment, UUID(record["id"]))
+        storage = Storage(
+            api.client.app.state.settings.storage_root / "authorization-attachments",
+            reference_prefix="authdoc",
+            object_suffix=".bin",
+        )
+        path = storage._path(item.storage_ref)
+        assert path.stat().st_mode & 0o777 == 0o400
+        path.chmod(0o600)
+        path.write_bytes(b"tampered authorization document")
+        audit_events = session.scalars(select(AuditEvent)).all()
+        assert all(
+            "signed-approval.pdf" not in str(event.source_metadata) for event in audit_events
+        )
+    expect(api.get(f"/authorization-attachments/{record['id']}/download"), 503)
+
+
+def test_authorization_documents_require_pending_scope_and_matching_signatures(delivery_api):
+    api = delivery_api
+    project = make_project(api)
+    permit = make_authorization(api, project, verify=False)
+    endpoint = f"/authorizations/{permit['id']}/attachments"
+    invalid = api.client.post(
+        PREFIX + endpoint,
+        files={"file": ("approval.pdf", b"not a PDF", "application/pdf")},
+        headers=api.headers("admin", "authorization-document-invalid"),
+    )
+    expect(invalid, 422)
+    empty = api.client.post(
+        PREFIX + endpoint,
+        files={"file": ("empty.pdf", b"", "application/pdf")},
+        headers=api.headers("admin", "authorization-document-empty"),
+    )
+    expect(empty, 422)
+
+    expect(
+        api.post(
+            f"/authorizations/{permit['id']}/verify",
+            {"revision": permit["revision"]},
+        )
+    )
+    late = api.client.post(
+        PREFIX + endpoint,
+        files={"file": ("approval.pdf", b"%PDF-1.4\n%%EOF\n", "application/pdf")},
+        headers=api.headers("admin", "authorization-document-late"),
+    )
+    expect(late, 409)
 
 
 def test_scope_roles_stale_revisions_and_self_review(delivery_api):

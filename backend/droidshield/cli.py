@@ -16,7 +16,14 @@ from sqlalchemy import select
 from droidshield.auth import hash_password, issue_token
 from droidshield.config import Settings
 from droidshield.db import build_engine, session_factory
-from droidshield.models import AccessToken, AppArtifact, AuditEvent, User, Workspace
+from droidshield.models import (
+    AccessToken,
+    AppArtifact,
+    AuditEvent,
+    AuthorizationAttachment,
+    User,
+    Workspace,
+)
 
 
 def migrate(settings: Settings) -> None:
@@ -347,9 +354,16 @@ def main() -> None:
         try:
             with session_factory(engine)() as session:
                 referenced = set(session.scalars(select(AppArtifact.storage_ref)).all())
-            count = Storage(settings.storage_root).clean_orphans(
-                referenced, time.time() - args.older_than_hours * 3600
-            )
+                authorization_documents = set(
+                    session.scalars(select(AuthorizationAttachment.storage_ref)).all()
+                )
+            threshold = time.time() - args.older_than_hours * 3600
+            count = Storage(settings.storage_root).clean_orphans(referenced, threshold)
+            count += Storage(
+                settings.storage_root / "authorization-attachments",
+                reference_prefix="authdoc",
+                object_suffix=".bin",
+            ).clean_orphans(authorization_documents, threshold)
             print(f"Removed {count} old unreferenced storage entries.")
         except Exception:
             print("Storage cleanup failed; check database and storage access.", file=sys.stderr)

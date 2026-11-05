@@ -105,8 +105,23 @@ All reads require authentication and current workspace/Project access:
 | `GET /api/v1/assessments/{id}/job` | Safe job status, timestamps and sanitized failure/cancellation information |
 | `GET /api/v1/assessments/{id}/analysis` | Persisted allowlisted metadata, indicators, engine version and explicit limitations |
 | `GET /api/v1/assessments/{id}/findings` | Finding summaries; new scanner candidates are Unreviewed/Open |
+| `GET /api/v1/authorizations/{id}/attachments` | Project-scoped authorization attachment metadata; no storage references |
+| `POST /api/v1/authorizations/{id}/attachments` | Writer upload of a pending authorization document, up to 8 MiB |
+| `GET /api/v1/authorization-attachments/{id}/download` | Authenticated document attachment after size and SHA-256 verification |
 
 Raw stdout/stderr, host paths, environment values, storage references and arbitrary engine output are not ordinary API response fields. Audit events identify the action/resource/request; they do not store APK bytes, upload notes, request bodies or credentials.
+
+Client approval documents use a separate private `authorization-attachments/`
+storage namespace with server-generated opaque references. A writer can upload
+one `.pdf`, `.png`, `.jpg` or `.jpeg` file at a time, up to 8 MiB, only while its
+authorization is pending. Bounded multipart transfer, filename/type/signature
+checks, server-side byte hashing, fresh authentication and project authorization
+are required before publication. The upload never parses or renders the document.
+Attachments are immutable at the database layer. Metadata GET responses omit
+object references and audit events omit filenames and file content; downloads
+recheck current project visibility, stored size and digest and use `nosniff` and
+`no-store`. Verification remains an independent ADMIN action and adding a file
+does not verify its authenticity or scope.
 
 Common responses: `401` missing/invalid authentication; `403` insufficient role; `404` missing or inaccessible resource; `408` upload transfer deadline exceeded; `409` stale revision, lifecycle or idempotency conflict; `413` size budget exceeded; `415` unsupported request/file media type; `422` invalid form, unsupported APK or package mismatch; `429` concurrent upload capacity busy; `503` required isolation unavailable. Errors carry a request correlation ID and do not echo submitted secrets or raw parser output.
 
@@ -131,13 +146,13 @@ These settings use the `DROIDSHIELD_` prefix; API and worker should share the sa
 | `WORKER_HEARTBEAT_SECONDS` | 1 second |
 | `WORKER_POLL_SECONDS` | 0.5 seconds |
 
-Interrupted intake can leave a staged file or unreferenced object after a host crash. Run trusted local maintenance to remove only stale temporary files and objects absent from the database:
+Interrupted intake can leave a staged file or unreferenced object after a host crash. Run trusted local maintenance to remove only stale temporary files and unreferenced APK or authorization-document objects absent from the database:
 
 ```sh
 droidshield cleanup-storage --older-than-hours 24
 ```
 
-The minimum age is one hour. Do not use this maintenance command as a retention policy or delete referenced files by hand. Back up the database and protected object storage together; a database record whose bytes were lost or modified fails integrity verification on download and execution. Full artifact/report retention policy administration remains planned.
+The minimum age is one hour. Do not use this maintenance command as a retention policy or delete referenced files by hand. Back up the database and protected object storage together; a database record whose bytes were lost or modified fails integrity verification on download and execution. Full evidence/report retention policy administration remains planned.
 
 ## Verification and remaining work
 
