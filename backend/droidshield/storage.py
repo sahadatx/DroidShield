@@ -37,6 +37,7 @@ class Storage:
         *,
         reference_prefix: str = "apk",
         object_suffix: str = ".apk",
+        create: bool = True,
     ):
         if not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", reference_prefix) or not re.fullmatch(
             r"\.[a-z0-9]{1,8}", object_suffix
@@ -51,13 +52,22 @@ class Storage:
         self.objects = self.root / "objects"
         self.staging = self.root / "staging"
         try:
-            for directory in [self.root, self.objects, self.staging]:
-                if directory.is_symlink():
-                    raise StorageError()
-                directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-                if not directory.is_dir() or directory.stat().st_uid != os.getuid():
-                    raise StorageError()
-                directory.chmod(0o700)
+            if create:
+                for directory in [self.root, self.objects, self.staging]:
+                    if directory.is_symlink():
+                        raise StorageError()
+                    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    if not directory.is_dir() or directory.stat().st_uid != os.getuid():
+                        raise StorageError()
+                    directory.chmod(0o700)
+            else:
+                for directory in [self.root, self.objects]:
+                    if (
+                        directory.is_symlink()
+                        or not directory.is_dir()
+                        or directory.stat().st_uid != os.getuid()
+                    ):
+                        raise StorageError("artifact_integrity_failed")
         except OSError as exc:
             raise StorageError() from exc
 
@@ -153,24 +163,68 @@ class Storage:
                 copy.close()
             shutil.rmtree(directory, ignore_errors=True)
 
+    def verify(self, storage_ref: str, sha256: str, size: int) -> None:
+        """Read-only integrity check for backup verification and restore drills."""
+        if size < 1 or not re.fullmatch(r"[0-9a-f]{64}", sha256):
+            raise StorageError("artifact_integrity_failed")
+        digest = hashlib.sha256()
+        count = 0
+        with self.open_artifact(storage_ref) as source:
+            if os.fstat(source.fileno()).st_size != size:
+                raise StorageError("artifact_integrity_failed")
+            while chunk := source.read(64 * 1024):
+                count += len(chunk)
+                if count > size:
+                    raise StorageError("artifact_integrity_failed")
+                digest.update(chunk)
+        if count != size or digest.hexdigest() != sha256:
+            raise StorageError("artifact_integrity_failed")
+
+    def stale_unreferenced_count(self, referenced: set[str], older_than: float) -> int:
+        """Count stale objects/temporary entries without modifying the store."""
+        count = 0
+        if self.objects.is_dir() and not self.objects.is_symlink():
+            for path in self.objects.iterdir():
+                if not re.fullmatch(rf"[0-9a-f]{{32}}{re.escape(self.object_suffix)}", path.name):
+                    continue
+                storage_ref = self.reference_prefix + ":" + path.name[: -len(self.object_suffix)]
+                if storage_ref in referenced or path.is_symlink() or not path.is_file():
+                    continue
+                if path.stat().st_mtime < older_than:
+                    count += 1
+        if self.staging.is_dir() and not self.staging.is_symlink():
+            for path in self.staging.iterdir():
+                if path.is_symlink() or path.stat().st_mtime >= older_than:
+                    continue
+                if (path.is_file() and path.name.startswith("upload-")) or (
+                    path.is_dir() and path.name.startswith("snapshot-")
+                ):
+                    count += 1
+        return count
+
     def clean_orphans(self, referenced: set[str], older_than: float) -> int:
         """Trusted CLI maintenance; never remove a referenced object or fresh upload."""
         count = 0
-        for path in self.objects.iterdir():
-            if not re.fullmatch(rf"[0-9a-f]{{32}}{re.escape(self.object_suffix)}", path.name):
-                continue
-            if self.reference_prefix + ":" + path.name[: -len(self.object_suffix)] in referenced:
-                continue
-            if not path.is_symlink() and path.is_file() and path.stat().st_mtime < older_than:
-                path.unlink()
-                count += 1
-        for path in self.staging.iterdir():
-            if path.is_symlink() or path.stat().st_mtime >= older_than:
-                continue
-            if path.is_file() and path.name.startswith("upload-"):
-                path.unlink()
-                count += 1
-            elif path.is_dir() and path.name.startswith("snapshot-"):
-                shutil.rmtree(path)
-                count += 1
+        if self.objects.is_dir() and not self.objects.is_symlink():
+            for path in self.objects.iterdir():
+                if not re.fullmatch(rf"[0-9a-f]{{32}}{re.escape(self.object_suffix)}", path.name):
+                    continue
+                if (
+                    self.reference_prefix + ":" + path.name[: -len(self.object_suffix)]
+                    in referenced
+                ):
+                    continue
+                if not path.is_symlink() and path.is_file() and path.stat().st_mtime < older_than:
+                    path.unlink()
+                    count += 1
+        if self.staging.is_dir() and not self.staging.is_symlink():
+            for path in self.staging.iterdir():
+                if path.is_symlink() or path.stat().st_mtime >= older_than:
+                    continue
+                if path.is_file() and path.name.startswith("upload-"):
+                    path.unlink()
+                    count += 1
+                elif path.is_dir() and path.name.startswith("snapshot-"):
+                    shutil.rmtree(path)
+                    count += 1
         return count

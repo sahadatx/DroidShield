@@ -108,10 +108,12 @@ droidshield create-user --workspace-id <UUID> --email tester@example.com --name 
 droidshield set-password --user-id <UUID>
 droidshield issue-token --user-id <UUID>  # only for programmatic API clients
 droidshield revoke-tokens --user-id <UUID>
-droidshield cleanup-storage --older-than-hours 24
+droidshield cleanup-storage --older-than-hours 24  # preview only
+droidshield cleanup-storage --older-than-hours 24 --apply  # asks for typed approval
+DROIDSHIELD_BACKUP_DATABASE_URL='...' droidshield verify-backup --storage-root /restore/artifacts
 ```
 
-Cleanup removes stale temporary/unreferenced objects after a minimum one-hour grace period. It does not implement retention deletion for referenced artifacts. No tables are created at application startup; migrate before serving.
+Cleanup previews stale temporary/unreferenced entries across all protected object stores; deletion requires `--apply` and the exact interactive approval phrase. Referenced records and their objects are never deleted by cleanup. `verify-backup` reads the restored SQLite/PostgreSQL database and object-store copy only, checks every persisted file reference against its size and SHA-256, and reports counts without printing references or paths. Keep the backup database URL in the environment rather than the command line. No tables are created at application startup; migrate before serving.
 
 ## Deployment boundaries
 

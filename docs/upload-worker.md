@@ -156,13 +156,24 @@ These settings use the `DROIDSHIELD_` prefix; API and worker should share the sa
 | `WORKER_HEARTBEAT_SECONDS` | 1 second |
 | `WORKER_POLL_SECONDS` | 0.5 seconds |
 
-Interrupted intake can leave a staged file or unreferenced object after a host crash. Run trusted local maintenance to remove only stale temporary files and unreferenced APK or authorization-document objects absent from the database:
+Interrupted intake, evidence writes and report exports can leave a staged file or unreferenced object after a host crash. Run the trusted local maintenance preview to inventory stale temporary files and unreferenced objects across artifacts, analyst evidence, screenshots, authorization documents and report exports:
 
 ```sh
 droidshield cleanup-storage --older-than-hours 24
 ```
 
-The minimum age is one hour. Do not use this maintenance command as a retention policy or delete referenced files by hand. Back up the database and protected object storage together; a database record whose bytes were lost or modified fails integrity verification on download and execution. Full evidence/report retention policy administration remains planned.
+The minimum age is one hour. Preview is the default and changes no files. To apply the displayed namespace counts, pass `--apply` and type `DELETE OLD UNREFERENCED STORAGE` at the prompt. Cleanup re-reads current database references after approval; it never removes referenced objects. It is an orphan-cleanup workflow, not a retention policy for immutable client records.
+
+For a restore drill, restore a database and the matching protected object-store snapshot to a private, non-production location. Point `DROIDSHIELD_BACKUP_DATABASE_URL` at that restored database and verify every artifact, evidence, screenshot, authorization-document and report-export reference without writing to either copy:
+
+```sh
+DROIDSHIELD_BACKUP_DATABASE_URL='postgresql+psycopg://...' \
+  droidshield verify-backup --storage-root /restore/droidshield-artifacts
+```
+
+The command opens SQLite backups in URI read-only/query-only mode and PostgreSQL backups with read-only transactions. It reports checked/failing counts by namespace, never prints object references or filesystem paths, and exits nonzero for a missing or digest/size-mismatched file. Restore both database and protected storage from a consistent backup point; the verifier checks referenced objects, and the cleanup preview can inventory extras only when run against that isolated restore configuration. Keep backup credentials in a protected environment file or service configuration, never shell history.
+
+If verification fails, do not run cleanup or overwrite the affected object. Restore the paired database/storage snapshot into a separate protected recovery location and re-run verification before promoting it. The tool never reconstructs or reattaches an orphan from file contents alone because that would invent provenance. Referenced engagement records remain under the existing immutable retention boundary; this workflow only collects stale unreferenced objects after local approval.
 
 ## Verification and remaining work
 

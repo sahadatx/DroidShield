@@ -1,5 +1,6 @@
 import argparse
 import getpass
+import os
 import signal
 import sys
 import threading
@@ -18,9 +19,7 @@ from droidshield.config import Settings
 from droidshield.db import build_engine, session_factory
 from droidshield.models import (
     AccessToken,
-    AppArtifact,
     AuditEvent,
-    AuthorizationAttachment,
     User,
     Workspace,
 )
@@ -256,9 +255,18 @@ def main() -> None:
     ca = sub.add_parser("init-proxy-ca", help="Create a dedicated lab CA; never installs trust")
     ca.add_argument("--directory", required=True, type=Path)
     cleanup = sub.add_parser(
-        "cleanup-storage", help="Remove old unreferenced objects and temporary files"
+        "cleanup-storage", help="Review and optionally remove stale unreferenced objects"
     )
     cleanup.add_argument("--older-than-hours", type=int, default=24)
+    cleanup.add_argument(
+        "--apply", action="store_true", help="Request interactive deletion approval"
+    )
+    backup = sub.add_parser(
+        "verify-backup", help="Read-only check of database references against a backup copy"
+    )
+    backup.add_argument(
+        "--storage-root", required=True, type=Path, help="Path to the backup object store"
+    )
     bootstrap = sub.add_parser("bootstrap", help="Create a workspace and its first admin")
     bootstrap.add_argument("--workspace", required=True)
     bootstrap.add_argument("--email", required=True)
@@ -346,30 +354,78 @@ def main() -> None:
             engine.dispose()
         return
     if args.command == "cleanup-storage":
-        from droidshield.storage import Storage
+        from droidshield.storage_maintenance import cleanup_apply, cleanup_plan
 
         if args.older_than_hours < 1:
             parser.error("Cleanup requires a grace period of at least one hour")
         engine = build_engine(settings.database_url)
+        threshold = time.time() - args.older_than_hours * 3600
         try:
             with session_factory(engine)() as session:
-                referenced = set(session.scalars(select(AppArtifact.storage_ref)).all())
-                authorization_documents = set(
-                    session.scalars(select(AuthorizationAttachment.storage_ref)).all()
-                )
-            threshold = time.time() - args.older_than_hours * 3600
-            count = Storage(settings.storage_root).clean_orphans(referenced, threshold)
-            count += Storage(
-                settings.storage_root / "authorization-attachments",
-                reference_prefix="authdoc",
-                object_suffix=".bin",
-            ).clean_orphans(authorization_documents, threshold)
-            print(f"Removed {count} old unreferenced storage entries.")
+                plan = cleanup_plan(session, settings.storage_root, threshold)
+            candidates = sum(plan.values())
+            print(
+                "Storage cleanup preview: "
+                + ", ".join(f"{name}={count}" for name, count in plan.items())
+                + f"; total={candidates}."
+            )
+            if not args.apply or not candidates:
+                print("No files were removed.")
+                return
+            print(f"This will delete {candidates} stale unreferenced objects or temporary entries.")
+            try:
+                confirmation = input("Type DELETE OLD UNREFERENCED STORAGE to approve: ")
+            except (EOFError, KeyboardInterrupt):
+                confirmation = ""
+            if confirmation != "DELETE OLD UNREFERENCED STORAGE":
+                print("Cleanup cancelled; no files were removed.")
+                raise SystemExit(2)
+            with session_factory(engine)() as session:
+                removed = cleanup_apply(session, settings.storage_root, threshold)
+            print(f"Removed {sum(removed.values())} approved stale unreferenced entries.")
         except Exception:
             print("Storage cleanup failed; check database and storage access.", file=sys.stderr)
             raise SystemExit(1) from None
         finally:
             engine.dispose()
+        return
+    if args.command == "verify-backup":
+        from droidshield.storage_maintenance import verify_backup
+
+        engine = None
+        try:
+            backup_database_url = os.environ.get("DROIDSHIELD_BACKUP_DATABASE_URL")
+            if not backup_database_url:
+                raise ValueError(
+                    "Set DROIDSHIELD_BACKUP_DATABASE_URL to the restored backup database"
+                )
+            if not args.storage_root.is_absolute():
+                raise ValueError("The backup storage root must be an absolute path")
+            if args.storage_root.is_symlink() or not args.storage_root.is_dir():
+                raise ValueError("The backup storage root must be an existing protected directory")
+            engine = build_engine(backup_database_url, read_only=True)
+            with session_factory(engine)() as session:
+                result = verify_backup(session, args.storage_root)
+            print(
+                "Backup verification: "
+                + ("CONSISTENT" if result["consistent"] else "FAILED")
+                + f"; references checked={result['checked']}; failures={result['failed']}."
+            )
+            for name, counts in result["namespaces"].items():
+                print(f"{name}: checked={counts['checked']}; failures={counts['failed']}")
+            if not result["consistent"]:
+                raise SystemExit(1)
+        except SystemExit:
+            raise
+        except Exception:
+            print(
+                "Backup verification failed; check the backup database and protected storage copy.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1) from None
+        finally:
+            if engine is not None:
+                engine.dispose()
         return
     if args.command in {"bootstrap", "create-user"}:
         try:
