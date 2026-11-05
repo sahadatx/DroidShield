@@ -9,11 +9,11 @@ description = "Mobile security assessment workspace and isolated analysis worker
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "fastapi>=0.141,<0.142",
+  "fastapi>=0.141,<0.163",
   "starlette>=1.7,<2",
   "anyio>=4.10,<5",
   "uvicorn>=0.54,<0.55",
-  "sqlalchemy>=2.0.44,<2.1",
+  "sqlalchemy>=2.0.44,<2.2",
   "pydantic>=2.13,<3",
   "pydantic-settings>=2.15,<3",
   "email-validator>=2.3,<3",
@@ -21,16 +21,16 @@ dependencies = [
   "psycopg[binary]>=3.3,<4",
   "python-multipart>=0.0.32,<0.1",
   "httpx>=0.28,<0.29",
-  "cryptography>=46,<47",
-  "reportlab>=4.5.1,<4.6",
+  "cryptography>=46,<51",
+  "reportlab>=4.5.1,<5.2",
   "Pillow>=12,<14",
   "cvss==3.6",
   "uharfbuzz==0.57.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.4,<9", "httpx>=0.28,<0.29", "ruff>=0.16,<0.17", "pypdf>=6,<7"]
-instrumentation = ["frida==17.9.10"]
+dev = ["pytest>=8.4,<10", "httpx>=0.28,<0.29", "ruff>=0.16,<0.18", "pypdf>=6,<7"]
+instrumentation = ["frida==17.25.1"]
 
 [project.scripts]
 droidshield = "droidshield.cli:main"
