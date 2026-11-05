@@ -48,11 +48,14 @@ people to these account identities.
 
 ## Pinned methodology and actual coverage
 
-`GET /methodology` returns 18 local analyst procedures covering all 24 MASVS 2.1.0
-controls, with Mobile Top 10 2024 risk mappings and NIST SP 800-115 (September 2008)
-methodology references. Local `DS-*` identifiers are DroidShield procedures, not
-invented OWASP MASTG test identifiers. The procedure text explicitly describes
-manual evaluation and missing source/device/access limitations.
+`GET /methodology` returns local procedure library version 1.1.0: 18 analyst
+procedures covering all 24 MASVS 2.1.0 controls, with Mobile Top 10 2024 risk
+mappings and NIST SP 800-115 (September 2008) methodology references. Each
+framework includes a source revision; MASVS mappings link to the individual
+control reference and pin the adopted OWASP MASVS `v2.1.0` release. Local
+`DS-*` identifiers are DroidShield procedures, not invented OWASP MASTG test
+identifiers. The procedure text explicitly describes manual evaluation and
+missing source/device/access limitations.
 
 `GET /assessments/{id}/coverage` returns the library and its recorded execution
 state. A missing execution is shown as Not Run; it never becomes Pass because a
@@ -64,8 +67,9 @@ finding link. Every referenced record must belong to the same assessment and
 expected artifact, including an explicitly absent artifact on API-only work.
 Current authorization is required when recording fresh evidence or test results.
 
-Each execution keeps a copy of the test procedure and framework versions. Old
-reports retain their snapshot if the methodology library changes later. A group
+Each execution keeps a copy of the test procedure, local library version,
+framework versions and source revision references. Old reports retain their
+snapshot if the methodology library changes later. A group
 of generic local procedures is a coverage management aid; a populated matrix does
 not automatically establish that every framework requirement was tested thoroughly.
 

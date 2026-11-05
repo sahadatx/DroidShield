@@ -279,6 +279,11 @@ def test_manual_api_coverage_review_and_release_retest(delivery_api):
     issue = add_finding(api, assessment, [evidence["id"]])
     assert issue["verification_status"] == "unreviewed"
     expect(record_case(api, assessment, evidence, issue, status="fail"))
+    recorded_coverage = expect(api.get(f"/assessments/{assessment['id']}/coverage"))
+    api_case = next(case for case in recorded_coverage["cases"] if case["id"] == "DS-API-01")
+    assert api_case["library_version"] == "1.1.0"
+    assert api_case["references"][0]["source_revision"] == "v2.1.0"
+    assert api_case["references"][0]["url"].endswith("/controls/MASVS-AUTH-1/")
     issue = confirm(api, issue)
     completed = complete(api, assessment)
     assert completed["status"] == "completed"
@@ -814,6 +819,7 @@ def test_draft_queue_and_expired_scope_do_not_start_manual_execution(delivery_ap
 def test_methodology_pins_all_masvs_controls_without_inventing_execution(delivery_api):
     api = delivery_api
     result = expect(api.get("/methodology"))
+    assert result["library_version"] == "1.1.0"
     controls = {
         reference["id"]
         for case in result["cases"]
@@ -822,6 +828,22 @@ def test_methodology_pins_all_masvs_controls_without_inventing_execution(deliver
     }
     assert len(controls) == 24
     assert {item["version"] for item in result["frameworks"]} == {"2.1.0", "2024", "2008-09"}
+    masvs = next(item for item in result["frameworks"] if item["id"] == "MASVS")
+    assert masvs["source_revision"] == "v2.1.0"
+    assert masvs["source_url"] == "https://github.com/OWASP/masvs/releases/tag/v2.1.0"
+    assert {case["library_version"] for case in result["cases"]} == {"1.1.0"}
+    assert {
+        reference["url"]
+        for case in result["cases"]
+        for reference in case["references"]
+        if reference["framework"] == "MASVS"
+    } == {f"https://mas.owasp.org/MASVS/controls/{control}/" for control in controls}
+    assert {
+        reference["source_revision"]
+        for case in result["cases"]
+        for reference in case["references"]
+        if reference["framework"] == "MASVS"
+    } == {"v2.1.0"}
     assert {
         "storage",
         "authentication",

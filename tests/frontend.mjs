@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { ApiError, analysisCoverageSections, apiEvidenceSections, artifactFormat, assessmentWorkflowLabel, auditExportPath, coverageMatrixMarkup, comparisonArtifactMarkup, createApi, detailTabsMarkup, dynamicScenarioOptions, dynamicDeviceLabel, endpointsFromForm, escapeHTML, exactHTTPSURL, formatBytes, kpiCards, makeQuery, metricCount, overviewActivityMarkup, overviewPendingActionsMarkup, overviewFilterPanel, pager, parseRoute, reportSnapshotMarkup, riskTrendMarkup, runtimeEvidenceSections, splitTargets, valuesFromFields, viewAction, workspaceSettingsMarkup, workspaceSettingsPayload, workspaceSecretStatusMarkup, workspaceUserRow } from "../backend/droidshield/web/app.js";
+import { ApiError, analysisCoverageSections, apiEvidenceSections, artifactFormat, assessmentWorkflowLabel, auditExportPath, coverageMatrixMarkup, comparisonArtifactMarkup, createApi, detailTabsMarkup, dynamicScenarioOptions, dynamicDeviceLabel, endpointsFromForm, escapeHTML, exactHTTPSURL, formatBytes, kpiCards, makeQuery, methodologyFrameworksMarkup, methodologyReferencesMarkup, metricCount, overviewActivityMarkup, overviewPendingActionsMarkup, overviewFilterPanel, pager, parseRoute, reportSnapshotMarkup, riskTrendMarkup, runtimeEvidenceSections, splitTargets, valuesFromFields, viewAction, workspaceSettingsMarkup, workspaceSettingsPayload, workspaceSecretStatusMarkup, workspaceUserRow } from "../backend/droidshield/web/app.js";
 
 test("client and project detail tabs expose accessible selected-tab relationships",()=>{
   const tabs=[["overview","Overview"],["findings","Findings <script>"]];
@@ -254,6 +254,16 @@ test("coverage matrix preserves unrun gaps and encodes analyst content without e
   const filtered=coverageMatrixMarkup(coverage,{status:"not_run",category:"storage",query:"Keychain"});
   assert.match(filtered,/<strong>1<\/strong><span>Not Run<\/span>/);assert.match(filtered,/DS-STORAGE-01/);assert.doesNotMatch(filtered,/DS-AUTH-01/);
   assert.match(coverageMatrixMarkup({summary:{pass:-4,not_run:"unknown"},cases:[]}),/No applicable test cases/);
+});
+
+test("methodology shows pinned standards sources as safe external links",()=>{
+  const refs=methodologyReferencesMarkup([{id:"MASVS-STORAGE-1",version:"2.1.0",source_revision:"v2.1.0",url:"https://mas.owasp.org/MASVS/controls/MASVS-STORAGE-1/"},{id:"bad\"><img src=x>",version:"1",url:"javascript:alert(1)"},{id:"evil",version:"1",url:"https://attacker.example/"}]);
+  assert.match(refs,/href="https:\/\/mas\.owasp\.org\/MASVS\/controls\/MASVS-STORAGE-1\/"/);
+  assert.match(refs,/rel="noopener noreferrer"/);assert.match(refs,/v2\.1\.0/);assert.match(refs,/&lt;img src=x&gt;/);
+  assert.doesNotMatch(refs,/javascript:|attacker\.example|<img/);
+  const frameworks=methodologyFrameworksMarkup([{id:"MASVS",version:"2.1.0",source_revision:"v2.1.0",source_url:"https://github.com/OWASP/masvs/releases/tag/v2.1.0"}],"1.1.0");
+  assert.match(frameworks,/Local procedures 1\.1\.0/);assert.match(frameworks,/github\.com\/OWASP\/masvs/);
+  assert.match(frameworks,/target="_blank" rel="noopener noreferrer"/);
 });
 
 test("report snapshots remain escaped review content and protected exports use authenticated reads", async () => {

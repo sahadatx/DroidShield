@@ -197,7 +197,7 @@ Layout: framework selector, control categories, test library, assessment coverag
 
 Fields: system-generated case ID; required title; framework (MASVS/MASTG/CWE), framework version/reference ID, category, objective, procedure, expected result, preconditions, applicability (Android/API/Both), risk notes and execution status (Not Run/Pass/Fail/N/A/Blocked). Store case definitions separately from per-assessment execution results. N/A and Blocked require a reason. Version mappings so framework updates cannot silently change old reports.
 
-Delivered: a version-pinned local test library, persisted execution records, actual coverage queries and scoped evidence/finding relationships. Custom library editing and managed framework-update workflows remain extensions.
+Delivered: version 1.1.0 of the local test library, with framework source revisions, direct MASVS control references, persisted execution snapshots and scoped evidence/finding relationships. Missing execution remains Not Run. Custom library editing and managed framework-update workflows remain extensions.
 
 ### 12 — Team & Access
 

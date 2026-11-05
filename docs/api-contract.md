@@ -144,7 +144,7 @@ The `code` and details vary by error. Field paths can be mapped to inline valida
 | `POST /api/v1/assessments/{id}/manual-start` | Begin a manual engagement | Current authorization, exact scope and assessment revision required |
 | `POST /api/v1/assessments/{id}/manual-finish` | Submit engagement for review | Records analyst summary; does not execute external tools |
 | `POST /api/v1/assessments/{id}/review` | Review a completed assessment | Independent ADMIN review |
-| `GET /api/v1/methodology` | Read the methodology library | Versioned local procedures and pinned standards references |
+| `GET /api/v1/methodology` | Read the methodology library | Local library version, versioned procedures, framework source revisions and direct control references |
 | `POST /api/v1/cvss/score` | Calculate a CVSS score | Authenticated base-vector calculation; does not create a finding |
 | `GET /api/v1/retests` | List retests | Scoped, paginated history and supported filters |
 | `GET /api/v1/retests/{id}` | Read retest detail | Scoped result, evidence provenance and review state |
@@ -465,7 +465,7 @@ The analyst delivery router adds:
 | `POST /assessments/{id}/manual-start` | Begin authorized analyst records, with revision, platform, environment, tool versions and limitations |
 | `POST /assessments/{id}/manual-finish` | Submit recorded coverage and summary for review |
 | `POST /assessments/{id}/review` | Independent ADMIN assessment completion or return |
-| `GET /methodology` | Locally authored procedures and pinned standards references |
+| `GET /methodology` | Versioned local procedures, framework source revisions and direct control references |
 | `GET /assessments/{id}/coverage` | Actual coverage and explicit Not Run gaps |
 | `PUT /assessments/{id}/coverage/{case_id}` | Revision-checked test status with evidence/finding links and provenance |
 | `GET, POST /assessments/{id}/evidence` | Scoped private sanitized text evidence metadata/intake |

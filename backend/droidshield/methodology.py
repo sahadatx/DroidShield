@@ -2,22 +2,33 @@
 
 from copy import deepcopy
 
+LIBRARY_VERSION = "1.1.0"
+MASVS_VERSION = "2.1.0"
+MASVS_RELEASE = "v2.1.0"
+MASVS_RELEASE_URL = "https://github.com/OWASP/masvs/releases/tag/v2.1.0"
+
 FRAMEWORKS = [
     {
         "id": "MASVS",
-        "version": "2.1.0",
+        "version": MASVS_VERSION,
+        "source_revision": MASVS_RELEASE,
+        "source_url": MASVS_RELEASE_URL,
         "url": "https://mas.owasp.org/MASVS/",
         "purpose": "Mobile security controls; coverage is recorded per test, never inferred from scanner success.",
     },
     {
         "id": "MOBILE-TOP-10",
         "version": "2024",
+        "source_revision": "2024",
+        "source_url": "https://owasp.org/www-project-mobile-top-10/",
         "url": "https://owasp.org/www-project-mobile-top-10/",
         "purpose": "Risk classification, not certification or an exhaustive test plan.",
     },
     {
         "id": "NIST-SP-800-115",
         "version": "2008-09",
+        "source_revision": "Final publication, September 2008",
+        "source_url": "https://csrc.nist.gov/pubs/sp/800/115/final",
         "url": "https://csrc.nist.gov/pubs/sp/800/115/final",
         "purpose": "Planning, execution and post-execution reporting guidance.",
     },
@@ -195,6 +206,7 @@ def library():
         cases.append(
             {
                 "id": case_id,
+                "library_version": LIBRARY_VERSION,
                 "title": title,
                 "category": category,
                 "platforms": ["android", "ios"],
@@ -204,9 +216,11 @@ def library():
                 "references": [
                     {
                         "framework": "MASVS",
-                        "version": "2.1.0",
+                        "version": MASVS_VERSION,
+                        "source_revision": MASVS_RELEASE,
                         "id": control,
-                        "url": "https://mas.owasp.org/MASVS/",
+                        "url": f"https://mas.owasp.org/MASVS/controls/{control}/",
+                        "source_url": MASVS_RELEASE_URL,
                     }
                     for control in controls
                 ]
@@ -214,19 +228,27 @@ def library():
                     {
                         "framework": "MOBILE-TOP-10",
                         "version": "2024",
+                        "source_revision": "2024",
                         "id": top10,
                         "url": "https://owasp.org/www-project-mobile-top-10/",
+                        "source_url": "https://owasp.org/www-project-mobile-top-10/",
                     },
                     {
                         "framework": "NIST-SP-800-115",
                         "version": "2008-09",
+                        "source_revision": "Final publication, September 2008",
                         "id": "assessment-methodology",
                         "url": "https://csrc.nist.gov/pubs/sp/800/115/final",
+                        "source_url": "https://csrc.nist.gov/pubs/sp/800/115/final",
                     },
                 ],
             }
         )
-    return {"frameworks": deepcopy(FRAMEWORKS), "cases": cases}
+    return {
+        "library_version": LIBRARY_VERSION,
+        "frameworks": deepcopy(FRAMEWORKS),
+        "cases": cases,
+    }
 
 
 def test_case(case_id):
