@@ -1,135 +1,258 @@
-# DroidShield
+<a id="top"></a>
 
-Mobile Security Assessment — an authorized Android and iOS assessment workspace with protected artifacts, isolated Android analysis and reviewed client deliverables.
+<h1 align="center">🛡️ DroidShield</h1>
 
-DroidShield 0.5 adds analyst-led mobile pentest delivery: protected APK/AAB/IPA intake, version-pinned test coverage, sanitized evidence, manual findings, independent review, CVSS 4.0/3.1 scoring, reviewed PDF/JSON reports and evidence-backed retests. The browser uses real persisted records; no production clients or dashboard counters are seeded. Existing isolated manifest/DEX/MobSF, controlled Android Frida/proxy and exact HTTPS API workers remain available.
+<p align="center"><strong>An analyst-led workspace for authorized Android and iOS security assessments</strong></p>
 
-See the [service coverage matrix and delivery workflow](docs/service-delivery.md) for what runs automatically and what the analyst performs in an external lab. iOS device testing, Burp/Objection workflows, full binary/source/dependency reviews and business-logic testing can be recorded with provenance and evidence; the workspace does not claim to execute them automatically.
+<p align="center">Authorization · Protected Builds · Android Analysis · Scoped API Checks · Evidence · Retesting · Reports</p>
 
-## Start locally
+<p align="center">
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick%20Start-Get%20Started-2563EB?style=for-the-badge" alt="Quick start"></a>
+  <a href="#project-demo"><img src="https://img.shields.io/badge/Demo-Watch-0891B2?style=for-the-badge" alt="Project demo"></a>
+  <a href="#safe-use"><img src="https://img.shields.io/badge/Safe%20Use-Read%20Scope-0F766E?style=for-the-badge" alt="Safe use"></a>
+  <a href="https://github.com/sahadatx/DroidShield/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/sahadatx/DroidShield/ci.yml?branch=main&label=CI" alt="GitHub Actions CI status"></a>
+</p>
 
-Use Python 3.11 or later, Linux, an unprivileged API/worker account, Bubblewrap (`bwrap`), working unprivileged user namespaces and a trusted system Python under `/usr`. APK processing refuses real or effective host UID 0 and fails closed when isolation is unavailable. From the project directory:
+<p align="center"><img src="images/Banner.png" alt="DroidShield mobile application security assessment workspace" width="100%"></p>
 
-```sh
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11 or newer">
+  <img src="https://img.shields.io/badge/FastAPI-Backend-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI backend">
+  <img src="https://img.shields.io/badge/Browser-ES%20Modules%20%2B%20CSS-2563EB?style=flat-square" alt="Buildless browser interface">
+  <img src="https://img.shields.io/badge/Use-Authorized%20Assessments%20Only-8B5CF6?style=flat-square" alt="Authorized assessments only">
+</p>
+
+<hr>
+
+<a id="overview"></a>
+
+## 📖 Overview
+
+DroidShield organizes authorized mobile assessments—from client and scope records to protected app intake, bounded analysis, reviewed findings, retesting, and report delivery.
+
+> **Project status:** DroidShield is an evolving assessment workspace, not a comprehensive scanner or a substitute for a qualified tester. Much of a full Android or iOS assessment remains analyst-led.
+
+## 📑 Contents
+
+- [Overview](#overview)
+- [Project demo](#project-demo)
+- [Workspace screenshots](#workspace-screenshots)
+- [Capabilities](#capabilities)
+- Assessment design
+  - [Architecture](#architecture)
+  - [Assessment workflow](#assessment-workflow)
+  - [Automation boundaries](#automation-boundaries)
+  - [Reports](#reports-and-exports)
+- Setup and use
+  - [Quick start](#quick-start)
+  - [Workers](#workers)
+  - [Deployment and configuration](#deployment)
+  - [API and testing](#api-and-testing)
+- Project
+  - [Documentation](#documentation)
+  - [Project structure](#project-structure)
+  - [Safe use](#safe-use)
+  - [Contributing](#contributing)
+  - [Author](#author)
+
+<a id="project-demo"></a>
+
+## 🎥 Project Demo
+
+Click the thumbnail to watch a DroidShield walkthrough using fictional assessment records.
+
+<p align="center">
+  <a href="images/Video.mp4">
+    <img src="images/demo-thumbnail.png" alt="Play the DroidShield project demo" width="100%">
+  </a>
+</p>
+
+<a id="workspace-screenshots"></a>
+
+## 📸 Workspace Screenshots
+
+These fictional dark-theme screens show the workflow; they contain no client data.
+
+| Overview | API security |
+|:---:|:---:|
+| <img src="images/01-overview.jpg" alt="DroidShield workspace overview" width="100%"> | <img src="images/02-api-security.jpg" alt="Scoped API security review setup" width="100%"> |
+| Project setup | Scope review |
+| <img src="images/03-project-setup.jpg" alt="Create a project and define initial scope" width="100%"> | <img src="images/04-scope-review.jpg" alt="Review authorization and assessment scope details" width="100%"> |
+| Findings review | Report delivery |
+| <img src="images/05-findings-review.jpg" alt="Analyst review of fictional mobile security findings" width="100%"> | <img src="images/06-report-delivery.jpg" alt="Review and export a versioned DroidShield assessment report" width="100%"> |
+
+<a id="capabilities"></a>
+
+## ✨ Capabilities
+
+- **Engagements:** Client/project records, platform and app identity, authorization, exact scope, exclusions, team access, and audit history.
+- **Protected intake:** Private APK/AAB/IPA storage with server-calculated hashes and bounded metadata parsing.
+- **Controlled analysis:** Isolated Android manifest/DEX checks, an optional fixed MobSF adapter, configured disposable Android runtime, and exact-scope API checks.
+- **Analyst-led delivery:** Versioned methodology, sanitized evidence, independent finding review, evidence-backed retesting, and frozen PDF/JSON reports.
+- **Browser workspace:** Same-origin authenticated API and server-managed sessions.
+
+Coverage is partial and evidence-led. Automated observations do not confirm vulnerabilities; APK/AAB/IPA intake does not imply full binary coverage.
+
+<a id="architecture"></a>
+
+## 🏗️ Architecture
+
+A same-origin browser workspace uses the FastAPI service. SQLite is for local development; shared and production deployments use PostgreSQL. Protected files stay outside the public web root, and eligible jobs run in separate workers.
+
+```mermaid
+flowchart LR
+  Analyst([Security analyst]) --> UI[Same-origin browser workspace]
+  UI -->|Authenticated requests| API[FastAPI application]
+  API --> DB[(SQLite development / PostgreSQL deployment)]
+  API --> Store[(Private artifact and evidence storage)]
+  API --> Queue[(Scoped job records)]
+  Queue --> Static[Isolated Android static worker]
+  Queue --> Dynamic[Disposable Android lab worker]
+  Queue --> APIWorker[Exact-scope API worker]
+  Static --> Parser[Bounded manifest and DEX analysis]
+  Dynamic --> AVD[Configured authorized emulator]
+  APIWorker -->|HTTPS GET / HEAD only| Target[Exact approved endpoints]
+  API --> Reports[Reviewed PDF / JSON snapshots]
+
+  classDef actor fill:#3B2F14,stroke:#FBBF24,color:#FFFBEB,stroke-width:2px
+  classDef interface fill:#083344,stroke:#22D3EE,color:#ECFEFF,stroke-width:2px
+  classDef service fill:#172554,stroke:#60A5FA,color:#EFF6FF,stroke-width:2px
+  classDef storage fill:#3B0764,stroke:#C084FC,color:#FAF5FF,stroke-width:2px
+  classDef queue fill:#431407,stroke:#FB923C,color:#FFF7ED,stroke-width:2px
+  classDef worker fill:#052E16,stroke:#4ADE80,color:#F0FDF4,stroke-width:2px
+  classDef lab fill:#164E63,stroke:#67E8F9,color:#ECFEFF,stroke-width:2px
+  classDef target fill:#064E3B,stroke:#34D399,color:#ECFDF5,stroke-width:2px
+  classDef report fill:#312E81,stroke:#A78BFA,color:#F5F3FF,stroke-width:2px
+  class Analyst actor
+  class UI interface
+  class API service
+  class DB,Store storage
+  class Queue queue
+  class Static,Dynamic,APIWorker,Parser worker
+  class AVD lab
+  class Target target
+  class Reports report
+  linkStyle default stroke:#94A3B8,stroke-width:2px
+```
+
+<a id="assessment-workflow"></a>
+
+## 🔄 Assessment Workflow
+
+```mermaid
+flowchart LR
+  subgraph scope["01 · SCOPE"]
+    Client([Client and project]) --> Authorization[Authorization and exclusions]
+  end
+  subgraph intake["02 · INTAKE"]
+    Build[App build or exact API endpoints] --> Review[Identity and scope review]
+  end
+  subgraph assess["03 · ASSESS"]
+    Review --> Execute[Eligible bounded worker or manual engagement]
+    Execute --> Evidence[Coverage, evidence, and candidate findings]
+  end
+  subgraph delivery["04 · REVIEW AND DELIVER"]
+    Evidence --> Independent[Independent administrator review]
+    Independent --> Retest[Evidence-backed retest]
+    Retest --> Report[Approved report snapshot]
+  end
+  Authorization --> Build
+
+  classDef scopeNode fill:#142D4D,stroke:#60A5FA,color:#EFF6FF,stroke-width:2px
+  classDef intakeNode fill:#0F3436,stroke:#2DD4BF,color:#ECFEFF,stroke-width:2px
+  classDef assessNode fill:#3A2C12,stroke:#FBBF24,color:#FFFBEB,stroke-width:2px
+  classDef deliveryNode fill:#2E1E4D,stroke:#C4B5FD,color:#F5F3FF,stroke-width:2px
+  class Client,Authorization scopeNode
+  class Build,Review intakeNode
+  class Execute,Evidence assessNode
+  class Independent,Retest,Report deliveryNode
+  style scope fill:#0D1B2A,stroke:#60A5FA,color:#DBEAFE,stroke-width:2px
+  style intake fill:#0A2528,stroke:#2DD4BF,color:#CCFBF1,stroke-width:2px
+  style assess fill:#2A210F,stroke:#FBBF24,color:#FEF3C7,stroke-width:2px
+  style delivery fill:#201638,stroke:#C4B5FD,color:#EDE9FE,stroke-width:2px
+  linkStyle default stroke:#94A3B8,stroke-width:2px
+```
+
+Manual engagement records document analyst work performed outside the app; they do not launch external tools or prove a target was tested by DroidShield.
+
+<a id="automation-boundaries"></a>
+
+## 🧪 Automation Boundaries
+
+| Area | What runs | Important limit |
+|:---|:---|:---|
+| **APK** | Isolated manifest and selected DEX analysis; optional configured MobSF normalization. | Results are candidates for review; no source or dependency scan is implied. |
+| **AAB / IPA** | Protected intake and bounded package metadata inspection. | Not full bundle, binary, signature, entitlement, or runtime analysis. |
+| **Android runtime** | Fixed observations on an explicitly configured disposable emulator. | No physical-device selection, custom Frida scripts, or pinning bypass. |
+| **API baseline** | Exact approved HTTPS endpoints using bounded `GET`/`HEAD` comparisons. | No broad crawl; a response comparison alone does not prove BOLA/IDOR. |
+| **External procedures** | Record analyst methods, versions, environment, outcomes, and evidence. | Recording a procedure does not run Burp, Objection, iOS tools, or other external software. |
+| **CycloneDX 1.6** | Normalize a supplied inventory into component records and unreviewed candidates. | Does not run SCA, validate provenance, or assess reachability. |
+
+The local procedure library maps to MASVS 2.1.0. Untouched procedures remain **Not Run**; it is not an exhaustive MASTG catalog.
+
+<a id="reports-and-exports"></a>
+
+## 📄 Reports
+
+Reports are immutable, versioned snapshots from completed assessments. A different administrator must approve a snapshot before export. Only confirmed findings and reviewed retests are included.
+
+- **PDF:** Executive or technical report with scope, coverage, limitations, and approved content.
+- **JSON:** Approved snapshot, provenance, review metadata, and integrity digest.
+
+Report export does not certify compliance or guarantee that all vulnerabilities were found. See [reporting and scoring](docs/reporting.md).
+
+<a id="quick-start"></a>
+
+## 🚀 Quick Start
+
+**Requirements:** Python 3.11+ and Linux. APK analysis additionally requires Bubblewrap (`bwrap`), working unprivileged user namespaces, and a trusted system Python under `/usr`. Run the API and workers as an unprivileged account; APK analysis fails closed if isolation is unavailable or the process is host root.
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[dev]'
 cp .env.example .env
 droidshield migrate
 droidshield bootstrap --workspace DroidShield --email analyst@example.com --name 'Workspace Admin'
-# Use the User ID printed by bootstrap; the password is entered in hidden prompts:
-droidshield set-password --user-id <UUID>
+droidshield set-password --user-id USER_ID_FROM_BOOTSTRAP
 uvicorn droidshield.main:create_app --factory --host 127.0.0.1 --port 8787
 ```
 
-Open the [DroidShield workspace](http://127.0.0.1:8787/) and sign in with the email and password you set. The browser session uses a server-managed HttpOnly cookie, survives page reloads, and expires after 12 hours by default. Passwords are stored as salted scrypt hashes; no default password is generated. To set or reset an existing user's password, run `droidshield set-password --user-id <UUID>` in a terminal. This also revokes that user's active sessions. `droidshield issue-token --user-id <UUID>` remains available only for programmatic API clients; the browser does not ask for or send bearer tokens.
+Use the ID printed by `bootstrap`; the password command prompts without echoing it. Open <http://127.0.0.1:8787/> and sign in. Browser authentication uses an `HttpOnly` session cookie; no default account is seeded. Keep `.env` private.
 
-Start workers separately, with the same database, protected storage and execution configuration:
+<a id="workers"></a>
 
-```sh
-# Static manifest, DEX, or configured MobSF analysis:
-droidshield worker
-# Configured disposable lab sessions, including Frida/proxy observation:
-droidshield dynamic-worker
-# Exact approved HTTPS API endpoints (GET/HEAD baseline/comparisons):
-droidshield api-worker
-```
+## ⚙️ Workers
 
-Each worker accepts `--once` to process at most one eligible job. Queue records alone never launch a scan. Static, Dynamic and API workers claim only their own assessment type. Dynamic execution requires an explicitly configured disposable emulator; API execution requires an exact endpoint configuration and active authorization. Full Android/iOS engagements use the manual workflow; automatic Full orchestration remains planned.
+Workers run separately from the browser/API service. Queueing alone never starts a scan.
 
-## Included
+| Command | Work type |
+|:---|:---|
+| `droidshield worker` | APK static analysis and configured MobSF jobs. |
+| `droidshield dynamic-worker` | Configured disposable Android emulator sessions. |
+| `droidshield api-worker` | Exact approved HTTPS API checks. |
 
-- A responsive, accessible browser workspace: Overview, Clients, Projects, Assessments, APK Analysis, Dynamic Testing, API Security, Findings, Methodology, Retesting, Reports, administrator Audit Logs and read-only Settings/capabilities. Forms, searches, filters, pagination, revision conflicts, uploads and downloads use real authenticated APIs. An ADMIN-only settings API provides safe workspace/report presentation preferences; browser editing follows separately.
-- Strict schemas, relational constraints, and versioned Alembic migrations through `0014_android_long_version_code`; salted scrypt password hashes, database-shared login throttling, persistent HttpOnly browser sessions, CSRF checks and optional hashed API credentials; role, workspace and linked-project checks; optimistic revisions, idempotency and sanitized audit history.
-- Client/project create, edit and archive; exact scope authorizations with validity windows, protected immutable supporting documents, administrator verification/revocation and independent worker rechecks.
-- Bounded multipart APK/AAB/IPA intake, sandboxed binary/protobuf manifest and Info.plist inspection, server-calculated SHA-256, private opaque storage, immutable project-scoped deduplication and integrity-verified downloads.
-- Isolated manifest analysis and actual bounded DEX instruction inspection. DEX candidates include recognized crypto/WebView API references and secret-like literal categories; raw literals and credentials are never published. See [DEX coverage and limits](docs/dex-analysis.md).
-- An administrator-configured MobSF engine option that normalizes allowed results rather than returning arbitrary scanner content. External scanner deployment is its own trusted processing boundary; configuration does not prove that a service is reachable or securely isolated.
-- Controlled ADB sessions on dedicated disposable Android emulators: package inspection/launch, fixed Frida native-call counters and exact-target HTTPS proxy observations. Exclusive device leases, authorization monitoring, bounded execution, owned-resource cleanup and crash quarantine remain mandatory. Frida keeps deny-all guest egress; proxy sessions add only an exact app-UID loopback path to the guarded proxy. See [lab requirements](docs/dynamic-lab.md), [Frida](docs/frida.md) and [proxy controls](docs/proxy.md).
-- An API Security page and separate leased API worker: immutable exact GET/HEAD endpoint configurations, project-bound protected account references, explicit test windows/rates, verified/pinned HTTPS transport, outbound network controls and sanitized response comparisons. HTTP success is an observation; candidate findings remain Unreviewed/Open. See [API testing](docs/api-security.md).
-- Database-derived overview counts, source assessment/artifact/hash/engine provenance, job leases/heartbeats/fencing, cancellation/revocation monitoring and immutable normalized results.
-- Sanitized text evidence and bounded PNG screenshot attachments in separate protected storage, with immutable metadata and integrity-checked authenticated downloads. Reviewed technical/combined PDFs can embed bounded, metadata-stripped screenshots; executive PDFs omit them, and JSON exports retain metadata and hashes without image pixels.
+Add `--once` to process at most one eligible job. Dynamic and API jobs also require their respective lab/network configuration and current authorization.
 
-The automated engines provide bounded checks. Automated exploit/fuzzing/injection coverage, arbitrary Frida scripts, TLS/certificate-pinning bypass, broad runtime instrumentation, dependency/CVE completeness, signature validation, production identity-provider integration, secret rotation and full settings administration remain outside their execution surface. Manual coverage records document external analyst work and never imply tool execution. Client reports support audit evidence; they do not certify SOC 2, ISO 27001, HIPAA, PCI DSS or store approval. A clean candidate list is not proof that an application is secure. APK/AAB metadata records Android's composed long version code as `(versionCodeMajor << 32) | versionCode`; each component is bounded to 0–2,147,483,647, and unresolved values fail closed.
+<a id="deployment"></a>
 
-For manual delivery, use separate analyst and reviewer accounts. Start an authorized manual engagement, record test coverage and sanitized evidence, review findings, submit the assessment for independent review, then generate, approve and export a frozen report. Retests preserve new-build or API-release evidence and require independent approval before a Pass marks a finding Fixed.
+## 🖥️ Deployment and Configuration
 
-## Workflow and documentation
+SQLite is for local development; shared/production deployments require PostgreSQL, HTTPS, protected storage outside the web root, separate restricted service/worker identities, and network egress controls. The application account should not own tables or have DDL privileges.
 
-Create a client and application project, record the approved targets/exclusions/testing window, and have an administrator verify the authorization evidence reference. Create a Static or Dynamic assessment, upload the matching APK, and link the verified authorization. Queue Static analysis with the selected engine, or create a Dynamic session on a configured lab device. Inspect the persisted evidence and coverage limitations after the worker completes. For API testing, create an API assessment with exact HTTPS endpoint targets, configure its API target/account references and test window, then queue it from API Security; no APK is required. Frida/proxy scenarios require the additional administrator setup below.
+Settings use `.env` and `DROIDSHIELD_*` variables. See [`.env.example`](.env.example) for the complete list. Configure only the required lab devices, network allowlists, and fixed external services; a configuration flag alone does not establish readiness. Never commit secrets, and do not treat application CIDR checks as a replacement for firewall rules.
 
-- [Analyst workflow](docs/analyst-workflow.md): manual engagement, evidence, findings review and exact build/release retests.
-- [Gig capability review](docs/gig-capability-review.md): which supplied service promises the product can support, where analyst-lab work remains, and which marketing claims the software cannot establish.
-- [Reports and scoring](docs/reporting.md): frozen client deliverables, approval, bounded PDF generation and protected exports.
-- [Service delivery and capability matrix](docs/service-delivery.md): Android/iOS service coverage, operational steps, external-lab requirements and accurate client-facing claims.
-- [Complete product blueprint](docs/blueprint.md): intended pages, forms, data model and delivery phases, with current delivery boundaries.
-- [Browser interface](docs/frontend.md): memory-only connection, page behavior, form/accessibility rules and UI limitations.
-- [Backend API contract](docs/api-contract.md): concrete endpoints, payloads and guarded transitions.
-- [APK upload and static worker](docs/upload-worker.md): protected intake, storage, leases and recovery.
-- [DEX analysis](docs/dex-analysis.md): supported bytecode formats, candidate rules and bounded evidence.
-- [MobSF adapter](docs/mobsf.md): fixed service configuration, safe normalization and external processing boundaries.
-- [Controlled dynamic lab](docs/dynamic-lab.md): disposable device requirements, sessions, firewall checks and quarantine.
-- [Frida observation](docs/frida.md): pinned authenticated server, immutable native-call script, bounded counters and exact forward cleanup.
-- [HTTPS lab proxy](docs/proxy.md): dedicated debug CA, restricted CONNECT/GET/HEAD forwarding and guest loopback controls.
-- [API security testing](docs/api-security.md): exact scope, account references, pinned TLS transport, rate/window budgets and safe evidence.
-- [Client form specification](docs/client-form-plan.md): identity/contact fields and ownership rules.
-- [Deployment and recovery runbook](docs/operations.md): API readiness, worker supervision, upgrades and restore steps.
-- [Release readiness checklist](docs/release-checklist.md): source, runtime, integration and post-deploy gates.
+See the [deployment and recovery guide](docs/operations.md) and [release readiness checklist](docs/release-checklist.md) before a shared deployment.
 
-The local [API reference](http://127.0.0.1:8787/docs), [liveness](http://127.0.0.1:8787/health/live) and [readiness](http://127.0.0.1:8787/health/ready) are served by the same application. Readiness checks database/schema compatibility, not worker liveness, sandbox usability, external scanner availability or Android lab boot state. Authenticated `GET /api/v1/capabilities` exposes safe configuration flags, upload/session limits and opaque lab labels; it never returns scanner credentials, device serials or host paths.
+<a id="api-and-testing"></a>
 
-Frida is an optional administrator-provisioned lab dependency. Install the pinned
-host extra with `python -m pip install -e '.[instrumentation]'`, provision the
-matching authenticated Frida 17.9.10 server on the dedicated AVD, and configure its
-verified SHA-256, protected token and interpreter. The worker never downloads or
-starts a server and accepts no custom scripts. The built-in hooks count native
-`open`/`openat`, `connect` and `getaddrinfo` calls without recording their arguments.
+## 🔌 API and Testing
 
-For proxy sessions, create a new private CA directory:
+The API is versioned under `/api/v1`. Local interactive docs are at <http://127.0.0.1:8787/docs>; see the [API contract](docs/api-contract.md) for access rules and request/response details.
 
-```sh
-droidshield init-proxy-ca --directory /absolute/private/droidshield-lab-ca
-```
+Run the main checks locally:
 
-Configure its cert/key paths and provision the certificate into the authorized
-app's debug trust configuration. The command never installs device/app trust.
-Certificate pinning remains intact. The proxy is a bounded HTTP/1 implementation
-using the standard library and cryptography, with exact HTTPS target checks and
-independent upstream TLS verification; it is not a general tunnel. See the
-runbooks before configuring the optional fields in `.env.example`.
-
-API credentials live in an owner-only project/workspace-bound JSON reference
-store configured by the administrator. The browser selects reference names; it
-never receives token/cookie/API-key values. Outbound HTTPS is public-address-only
-by default, with narrow administrator CIDRs and CA trust for private test labs.
-
-Trusted local administration also supports:
-
-```sh
-droidshield create-user --workspace-id <UUID> --email tester@example.com --name Tester --role SECURITY_ANALYST
-droidshield set-password --user-id <UUID>
-droidshield issue-token --user-id <UUID>  # only for programmatic API clients
-droidshield revoke-tokens --user-id <UUID>
-droidshield cleanup-storage --older-than-hours 24  # preview only
-droidshield cleanup-storage --older-than-hours 24 --apply  # asks for typed approval
-DROIDSHIELD_BACKUP_DATABASE_URL='...' droidshield verify-backup --storage-root /restore/artifacts
-```
-
-Cleanup previews stale temporary/unreferenced entries across all protected object stores; deletion requires `--apply` and the exact interactive approval phrase. Referenced records and their objects are never deleted by cleanup. `verify-backup` reads the restored SQLite/PostgreSQL database and object-store copy only, checks every persisted file reference against its size and SHA-256, and reports counts without printing references or paths. Keep the backup database URL in the environment rather than the command line. No tables are created at application startup; migrate before serving.
-
-## Deployment boundaries
-
-SQLite is for development and uses `BEGIN IMMEDIATE` to serialize transactions before reads. Production settings require PostgreSQL with the psycopg driver and an absolute protected storage root. Use HTTPS, explicit allowed hosts/origins and restricted service/database accounts. Apply migrations with an administrative account; application accounts must not own tables or have DDL privileges. Keep `.env`, API credentials and customer artifacts out of source control.
-
-Storage belongs outside web roots and the `/usr` runtime exposed to the parser sandbox. Back up protected objects and the database together. Audit, artifact and normalized-result mutation guards preserve history against normal application writes; trusted database owners can alter schema and triggers. Internal notes, raw APK/DEX strings, tokens, arbitrary scanner output and device logs are not ordinary audit or GET data.
-
-APKs are untrusted. Local manifest/DEX processing runs in a network-disabled Linux namespace with read-only runtime/input and bounded resources. Workers revalidate access, scope, authorization and immutable artifact identity before execution, while running and before publication. The Android adapter additionally verifies a dedicated emulator identity and deny-all guest egress before installing application code. A proxy session permits only its owned app UID to reach a guest loopback/ADB-reversed guarded proxy, then restores and verifies DROP-only rules. API/proxy outbound requests use exact authorization checks, DNS/IP pinning, verified upstream TLS, no redirect following and bounded response bodies. An external MobSF service must be separately isolated and operated under the authorized assessment policy. All boundaries share underlying host/emulator trust; none certifies safety against kernel or emulator exploits.
-
-## Verification
-
-The [verification record](docs/verification.md) contains dated test snapshots for versions 0.3–0.5; each result describes that recorded setup and is not a claim that every later commit or deployment was re-tested. The checked-in migration head is `0014_android_long_version_code`. The version 0.5 record's note about the default local workspace being at `0006_reports` is historical and refers only to that workspace at the time; migrate a development database with `droidshield migrate`, and do not infer a deployment database's revision from the note. Frida, proxy and API runbooks document their test coverage and actual integration results separately from simulated fault tests.
-
-```sh
+```bash
 pytest
 ruff check backend tests
 ruff format --check backend tests
@@ -137,6 +260,81 @@ alembic check
 node --test tests/frontend.mjs
 ```
 
-Node.js 22 or newer is needed only for browser logic/security tests, not for running the interface. Backend checks use real binary manifests, real Bubblewrap/DEX processing, strict adapter output tests and fault-injected lab behavior. Real MobSF or emulator validation must be recorded separately from simulated adapter tests.
+Node.js 22+ is needed for browser tests only. PostgreSQL tests use `DROIDSHIELD_TEST_DATABASE_URL` and isolated schemas when configured. GitHub Actions runs the project checks on pushes and pull requests; see [Actions](https://github.com/sahadatx/DroidShield/actions) for current results.
 
-Set `DROIDSHIELD_TEST_DATABASE_URL` to a dedicated PostgreSQL test database for isolated generated-schema API/migration/worker checks; the test role needs schema creation permission. Never use a production database for tests. Passing tests, installed SDK tooling or a configured capability flag alone do not establish external scanner or device readiness.
+<a id="documentation"></a>
+
+## 📚 Documentation
+
+- [Service coverage](docs/service-delivery.md) · [Analyst workflow](docs/analyst-workflow.md) · [Reports and scoring](docs/reporting.md)
+- [Product blueprint](docs/blueprint.md) · [Browser interface](docs/frontend.md) · [API contract](docs/api-contract.md)
+- [Protected uploads](docs/upload-worker.md) · [DEX analysis](docs/dex-analysis.md) · [MobSF adapter](docs/mobsf.md)
+- [Android lab](docs/dynamic-lab.md) · [Frida](docs/frida.md) · [HTTPS proxy](docs/proxy.md) · [API security worker](docs/api-security.md)
+- [Deployment](docs/operations.md) · [Release checklist](docs/release-checklist.md) · [Verification history](docs/verification.md)
+
+<a id="project-structure"></a>
+
+## 📁 Project Structure
+
+```text
+DroidShield/
+├── backend/droidshield/       FastAPI app, models, services, workers, and engines
+├── tests/                     Backend, migration, sandbox, worker, and frontend tests
+├── docs/                      Product, security, delivery, and operations guides
+├── images/                    Banner, video, thumbnail, and synthetic screenshots
+├── scripts/                   Verification and runtime helpers
+└── .github/workflows/         CI and integration smoke workflows
+```
+
+<a id="safe-use"></a>
+
+## 🛡️ Safe Use
+
+> **Authorized testing only.** Use local fixtures or targets covered by current written authorization. Confirm exact scope, exclusions, methods, test window, request limits, and stop conditions before execution.
+
+- API/proxy traffic is limited to exact approved HTTPS endpoints and `GET`/`HEAD`; TLS verification stays enabled and redirects are not followed.
+- Android runtime work requires configured disposable emulators. No physical device is auto-selected, no custom Frida script is accepted, and certificate pinning is not bypassed.
+- Treat APK/AAB/IPA files as untrusted. Metadata intake and successful scanner jobs do not establish full coverage or confirm findings.
+- Manual records document analyst work; they do not execute arbitrary tools. Reports are not compliance certification.
+
+<a id="contributing"></a>
+
+## 🤝 Contributing
+
+Focused issues and pull requests are welcome. Include user-visible behavior, security boundaries, migration impact, and documentation updates; never use real client data or credentials in fixtures. Run relevant checks from [API and Testing](#api-and-testing).
+
+<a id="author"></a>
+
+## Author
+
+**Sahadat Hossain**
+
+Cybersecurity Researcher • Penetration Tester • Python Developer
+
+### Contact
+
+- 📧 **Email:** [pentester.sahadathossain@gmail.com](mailto:pentester.sahadathossain@gmail.com)
+- 💼 **LinkedIn:** [linkedin.com/in/pentester-sahadat-hossain](https://www.linkedin.com/in/pentester-sahadat-hossain/)
+- 🐙 **GitHub:** [github.com/sahadatx](https://github.com/sahadatx)
+- 🌐 **Portfolio:** [sahadatx.github.io/Personal-Portfolio](https://sahadatx.github.io/Personal-Portfolio/)
+
+> Feel free to connect for collaboration, security research, or open-source contributions.
+
+---
+
+If you found this project useful, consider supporting it by:
+
+- ⭐ Starring the repository
+- 🍴 Forking the project
+- 🤝 Contributing improvements
+- 📢 Sharing it with others
+
+---
+
+<p align="center">
+Made with ❤️ by <strong>Sahadat Hossain</strong>
+</p>
+
+<p align="right">
+<a href="#-overview">⬆️ Back to Top</a>
+</p>
